@@ -1,0 +1,878 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CanvasFrame</title>
+<!--
+  CanvasFrame home screen for LG webOS. Mirrors the Android launcher (launcher/.../HomeActivity.java):
+  clock + calendar panel, weather card + forecast/radar panel, Inputs/Apps drawers, photo rotation,
+  readability shading, idle auto-hide (controls slide off the edges), Frame/Glass themes, and the same two-column
+  remote navigation.
+  Laid out in the Android app's 960×540 dp space and zoomed to the screen.
+-->
+<style>
+  :root { --text: #f6f1ea; --muted: rgba(246,241,234,.62); --accent: #e8c99a; --on-accent: #2b2218; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1e1b18; cursor: none; }
+  body { font-family: "LG Smart UI", "Museo Sans", Roboto, sans-serif; color: var(--text); -webkit-font-smoothing: antialiased; }
+  #stage { position: relative; width: 960px; height: 540px; overflow: hidden;
+    background: linear-gradient(135deg, #1e1b18, #3a3129 55%, #5e4e3d); }
+  .ph { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 1.2s; }
+  .ph.on { opacity: 1; }
+  .scrim { position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(0,0,0,.4), rgba(0,0,0,0) 25%, rgba(0,0,0,0) 75%, rgba(0,0,0,.6)); }
+  #readScrim { position: absolute; inset: 0; opacity: 0; transition: opacity .5s;
+    background: linear-gradient(to right, rgba(0,0,0,.7), rgba(0,0,0,.45) 25%, rgba(0,0,0,.15) 50%, rgba(0,0,0,0) 75%); }
+  .sh { text-shadow: 0 1px 6px rgba(0,0,0,.5); }
+  body.strong .sh { text-shadow: 0 2px 10px rgba(0,0,0,.85); }
+
+  /* ---- left column: clock + weather */
+  #left { position: absolute; left: 26px; top: 20px; width: 260px; transition: transform .32s cubic-bezier(.2,.8,.3,1), opacity .32s; }
+  /* Idle: the clock/weather column slides off the left edge and the INPUTS/APPS buttons off the right (as on Android). */
+  body.ctlout #left { transform: translateX(-320px); opacity: 0; transition: transform .26s cubic-bezier(.6,0,.9,.6), opacity .26s; }
+  body.ctlout .toggle { transform: translateX(150px); transition: opacity .16s, transform .26s cubic-bezier(.6,0,.9,.6); }
+  body.ctlout #readScrim { opacity: 0 !important; }
+  .card { display: flex; align-items: center; border-radius: 14px; border: 2px solid transparent; transition: background .15s, border-color .15s; }
+  .card.focus { background: linear-gradient(135deg, rgba(28,31,36,.45), rgba(32,58,68,.45), rgba(24,42,51,.45)); border-color: var(--accent); }
+  .expand { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: var(--on-accent); font-size: 16px; line-height: 18px;
+    text-align: center; margin-left: 10px; opacity: 0; transform: translateX(-4px); transition: opacity .15s, transform .15s; flex: none; }
+  .card.focus .expand { opacity: 1; transform: none; }
+  #clockCard { padding: 2px 8px 6px 10px; display: inline-flex; }
+  #clock { font-family: "Museo Sans", "LG Smart UI"; font-weight: 100; font-size: 56px; line-height: 1; letter-spacing: -.5px; }
+  body.glass #clock { font-size: 64px; letter-spacing: -1.5px; }
+  #date { font-weight: 300; font-size: 16px; color: rgba(255,255,255,.87); margin-top: 2px; }
+  #nextEvent { font-weight: 300; font-size: 11px; padding: 4px 0 0 2px; white-space: nowrap; }
+  #dashHint { font-size: 9px; color: var(--muted); letter-spacing: .4px; padding: 6px 0 0 2px; }
+  #weatherCard { width: 170px; margin-top: 10px; padding: 8px 8px 9px 12px; }
+  #weatherCard .content { flex: 1; min-width: 0; }
+  #wHead { display: flex; align-items: center; }
+  #wIcon { font-size: 20px; }
+  #wTemp { font-family: "Museo Sans"; font-weight: 100; font-size: 28px; padding-left: 6px; line-height: 1; }
+  #wCond { font-size: 10px; font-weight: 300; }
+  #wRange { font-size: 7px; font-weight: 300; color: rgba(255,255,255,.87); }
+  #wRule { height: 1px; background: rgba(255,255,255,.2); margin: 6px 0 5px; }
+  #wPlace { font-size: 8px; font-weight: 300; }
+  #wUpdated { font-size: 7px; font-weight: 300; color: rgba(255,255,255,.7); }
+  .line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---- drawers */
+  .rowwrap { position: absolute; overflow: hidden; transition: transform .28s cubic-bezier(.2,.8,.3,1), opacity .28s; }
+  .rowwrap.out { transform: translateX(960px); opacity: 0; transition: transform .22s cubic-bezier(.6,0,.9,.6), opacity .22s; }
+  #inWrap { top: 22px; right: 20px; max-width: 640px; padding: 0 0 26px 24px; }
+  #apWrap { left: 14px; right: 0; bottom: 8px; padding: 30px 0 0 12px; }
+  .label { font-size: 8px; letter-spacing: 1.3px; color: var(--muted); padding: 4px 0 1px 6px; text-transform: uppercase; }
+  body.glass .label { display: none; }
+  .row { display: flex; padding: 4px 24px 4px 6px; transition: transform .2s; white-space: nowrap; }
+  body.glass .row { background: linear-gradient(to bottom, rgba(255,255,255,.35), rgba(255,255,255,.18), rgba(255,255,255,.25));
+    border: 1px solid rgba(255,255,255,.5); border-radius: 24px; padding: 10px 1px 10px 12px; }
+  #inRow { justify-content: flex-end; }
+  /* The apps tray grows with its tiles and always runs off the right edge of the screen (as on Android), instead of
+     stopping at the screen width while the tiles carry on past it. */
+  #apRow { width: max-content; min-width: calc(100% + 40px); box-sizing: border-box; }
+  body.glass #apRow { padding-right: 60px; }
+
+  .tile { flex: none; margin: 4px 11px 4px 0; border-radius: 10px; border: 1px solid rgba(255,255,255,.2);
+    background: rgba(255,255,255,.18); opacity: .55; transition: transform .15s, opacity .15s, background .15s, border-color .15s; }
+  body.bright .tile { background: rgba(20,18,16,.6); border-color: rgba(255,255,255,.25); opacity: .88; }
+  .tile.nosig { opacity: .35; }
+  body.bright .tile.nosig { opacity: .65; }
+  .tile.focus { opacity: 1 !important; border: 2px solid var(--accent); }
+  .tile.text.focus { background: var(--accent) !important; color: var(--on-accent); }
+  .tile.text.focus .sub { color: rgba(43,34,24,.7); }
+  .tile.in { width: 104px; height: 46px; transform-origin: 50% 0; }
+  .tile.in.focus { transform: scale(1.18); }
+  .tile.ap { width: 96px; height: 54px; transform-origin: 50% 100%; }
+  .tile.ap.focus { transform: scale(1.18); }
+  .tile.text { display: flex; flex-direction: column; justify-content: center; padding: 4px 8px 4px 10px; }
+  .tile .t { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .sub { font-size: 8px; color: var(--muted); }
+  .tile.icon { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .tile.icon img { width: 22px; height: 22px; border-radius: 5px; object-fit: contain; }
+  .tile.icon .sym { font-size: 18px; line-height: 22px; }
+  body.glass .tile.icon .sym { font-size: 24px; line-height: 30px; }
+  .tile.icon .t { font-size: 8px; padding: 3px 4px 0; max-width: 100%; }
+  body.glass .tile { background: linear-gradient(to bottom, rgba(72,72,80,.7), rgba(46,46,52,.7), rgba(36,36,40,.7));
+    border: 1px solid rgba(255,255,255,.3); border-radius: 14px; opacity: .94; }
+  body.glass .tile.focus { background: linear-gradient(to bottom, rgba(104,104,114,.9), rgba(72,72,80,.9), rgba(58,58,66,.9)) !important;
+    border: 2px solid rgba(255,255,255,.95); color: var(--text); }
+  body.glass .tile.text.focus .sub { color: var(--muted); }
+  body.glass .tile.ap { width: 84px; height: 70px; }
+  body.glass .tile.focus { transform: scale(1.12); }
+  body.glass .tile.icon img { width: 30px; height: 30px; border-radius: 7px; }
+  body.glass .tile.icon .t { font-size: 9px; padding-top: 5px; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+  body.glass .tile.text { align-items: center; }
+
+  .toggle { position: absolute; display: flex; align-items: center; justify-content: center; width: 104px; height: 46px;
+    font-size: 9px; letter-spacing: 1.6px; text-transform: uppercase; transition: opacity .16s, transform .32s cubic-bezier(.2,.8,.3,1); }
+  .toggle.hide { opacity: 0 !important; pointer-events: none; }
+  body.glass .toggle { border-radius: 99px; letter-spacing: .4px; text-transform: none; font-size: 11px; height: 40px; }
+  #inToggle { top: 30px; right: 20px; margin: 0; }
+  #apToggle { bottom: 18px; right: 20px; height: 54px; margin: 0; }
+  body.glass #apToggle { height: 40px; }
+
+  /* ---- centre panels */
+  .panel { position: absolute; left: 216px; width: 560px; padding: 14px 14px 14px 18px; border-radius: 20px; display: none;
+    background: linear-gradient(135deg, rgba(18,24,32,.6), rgba(24,42,54,.6), rgba(16,24,32,.6)); border: 1px solid rgba(255,255,255,.2);
+    box-shadow: 0 8px 24px rgba(0,0,0,.35); opacity: 0; transform: translateX(-12px); transition: opacity .18s, transform .18s; }
+  .panel.open { display: flex; }
+  .panel.shown { opacity: 1; transform: none; }
+  #forecast { top: 112px; }
+  #calendar { top: 40px; }
+  .pleft { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .tabs { display: flex; align-items: center; }
+  .tab { font-size: 14px; padding: 4px 10px; border-radius: 10px; color: var(--muted); }
+  .tab.active { background: rgba(255,255,255,.15); color: var(--text); }
+  .tab.focus { background: var(--accent); color: var(--on-accent); }
+  .slash { color: var(--muted); font-size: 13px; font-weight: 300; padding: 0 2px; }
+  #pills { display: flex; margin-top: 10px; }
+  .pill { flex: 1; margin-right: 6px; padding: 7px 0; border-radius: 14px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+    display: flex; flex-direction: column; align-items: center; }
+  .pill .a { font-size: 9px; } .pill .b { font-size: 18px; padding: 4px 0; } .pill .c { font-size: 11px; } .pill .l { font-size: 9px; color: var(--muted); }
+  #tomorrow { margin-top: 12px; padding: 8px 14px; border-radius: 14px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.2);
+    display: flex; align-items: center; }
+  #tomorrow .tl b { display: block; font-size: 11px; font-weight: 400; } #tomorrow .tl span { font-size: 9px; color: var(--muted); }
+  #tmTemp { flex: 1; font-size: 26px; font-weight: 300; padding-left: 14px; } #tmIcon { font-size: 28px; }
+  #sun { width: 132px; margin-left: 14px; padding: 10px 14px; border-radius: 16px; background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.2);
+    display: flex; flex-direction: column; justify-content: center; }
+  #sun .k { font-size: 10px; color: var(--muted); padding-top: 6px; }
+  #sun .v { font-size: 20px; } #sun .v small { font-size: 10px; color: var(--muted); padding-left: 5px; }
+  #dayLen { font-size: 17px; }
+  #radar { margin-top: 10px; position: relative; display: none; }
+  #radar canvas { width: 100%; display: block; border-radius: 12px; }
+  #radarMsg { position: absolute; left: 0; right: 0; top: 45%; text-align: center; font-size: 11px; color: var(--muted); }
+  body.radar #pills, body.radar #tomorrow, body.radar #sun { display: none; }
+  body.radar #radar { display: block; }
+
+  #calTitle { font-size: 14px; padding: 4px 10px; border-radius: 10px; background: rgba(255,255,255,.15); }
+  #calTitle.focus { background: var(--accent); color: var(--on-accent); }
+  .calhead { display: flex; align-items: center; }
+  .calhead span { font-size: 9px; color: var(--muted); padding-left: 8px; }
+  #calGrid { margin-top: 8px; }
+  .cr { display: flex; }
+  .cc { flex: 1; height: 28px; display: flex; flex-direction: column; align-items: center; }
+  .cc b { width: 20px; height: 20px; line-height: 20px; text-align: center; font-size: 11px; font-weight: 400; border-radius: 50%; }
+  .cc.dn b { font-size: 9px; color: var(--muted); }
+  .cc.today b { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .cc i { width: 4px; height: 4px; border-radius: 50%; margin-top: 1px; }
+  #agenda { width: 210px; margin-left: 14px; padding: 10px 14px; border-radius: 16px; background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.2); align-self: flex-start; }
+  #agenda .h { font-size: 10px; color: var(--muted); letter-spacing: 1.4px; }
+  #agenda .d { font-size: 9px; color: var(--accent); padding: 7px 0 1px; font-weight: 600; }
+  #agenda .e { font-size: 10px; display: flex; align-items: center; white-space: nowrap; overflow: hidden; }
+  #agenda .e i { width: 6px; height: 6px; border-radius: 50%; flex: none; margin-right: 6px; }
+  #agenda .none { font-size: 10px; color: var(--muted); padding-top: 8px; white-space: pre-line; }
+
+  #toast { position: absolute; left: 50%; bottom: 90px; transform: translateX(-50%); padding: 6px 14px; border-radius: 10px; font-size: 11px;
+    background: rgba(20,17,14,.9); border: 1px solid rgba(255,255,255,.15); opacity: 0; transition: opacity .2s; white-space: nowrap; }
+  #toast.show { opacity: 1; }
+  #toast.notice { font-size: 15px; padding: 10px 20px; border-radius: 14px; }
+  #toast { z-index: 1000; color: #fff; }
+</style>
+</head>
+<body class="ctlout">
+<div id="stage">
+  <img class="ph" id="phA" alt=""><img class="ph" id="phB" alt="">
+  <div class="scrim"></div>
+  <div id="readScrim"></div>
+
+  <div id="left">
+    <div class="card" id="clockCard">
+      <div>
+        <div id="clock" class="sh">--:--</div>
+        <div id="date" class="sh"></div>
+        <div id="nextEvent" class="sh" hidden></div>
+        <div id="dashHint" class="sh"></div>
+      </div>
+      <div class="expand">›</div>
+    </div>
+    <div class="card" id="weatherCard">
+      <div class="content">
+        <div id="wHead"><span id="wIcon" class="sh">🌤️</span><span id="wTemp" class="sh">--°</span></div>
+        <div id="wCond" class="sh line"></div>
+        <div id="wRange" class="sh line"></div>
+        <div id="wRule"></div>
+        <div id="wPlace" class="sh line"></div>
+        <div id="wUpdated" class="sh line"></div>
+      </div>
+      <div class="expand">›</div>
+    </div>
+  </div>
+
+  <div class="rowwrap out" id="inWrap"><div class="label sh">Inputs</div><div class="row" id="inRow"></div></div>
+  <div class="tile text toggle" id="inToggle">Inputs</div>
+  <div class="rowwrap out" id="apWrap"><div class="label sh">Apps</div><div class="row" id="apRow"></div></div>
+  <div class="tile text toggle" id="apToggle">Apps</div>
+
+  <div class="panel" id="forecast">
+    <div class="pleft">
+      <div class="tabs"><span class="tab" data-tab="0">Hourly</span><span class="slash">/</span><span class="tab" data-tab="1">Weekly</span><span class="slash">/</span><span class="tab" data-tab="2">Radar</span></div>
+      <div id="radar"><canvas id="radarCanvas" width="768" height="400"></canvas><div id="radarMsg"></div></div>
+      <div id="pills"></div>
+      <div id="tomorrow"><div class="tl"><b>Tomorrow</b><span id="tmCond"></span></div><div id="tmTemp"></div><div id="tmIcon"></div></div>
+    </div>
+    <div id="sun">
+      <div class="k">Sunrise</div><div class="v" id="sunrise"></div>
+      <div class="k">Sunset</div><div class="v" id="sunset"></div>
+      <div class="k">Length of day</div><div id="dayLen"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="calendar">
+    <div class="pleft">
+      <div class="calhead"><div id="calTitle"></div><span>◀ ▶ change month</span></div>
+      <div id="calGrid"></div>
+    </div>
+    <div id="agenda"></div>
+  </div>
+
+  <div id="toast"></div>
+</div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const DAY = 86400000;
+const WMO = {0:['☀️','Clear','🌙'],1:['🌤️','Mostly clear','🌙'],2:['⛅','Partly cloudy','☁️'],3:['☁️','Overcast'],45:['🌫️','Fog'],48:['🌫️','Fog'],
+  51:['🌦️','Drizzle'],53:['🌦️','Drizzle'],55:['🌦️','Drizzle'],56:['🌧️','Freezing drizzle'],57:['🌧️','Freezing drizzle'],
+  61:['🌧️','Light rain'],63:['🌧️','Rain'],65:['🌧️','Heavy rain'],66:['🌧️','Freezing rain'],67:['🌧️','Freezing rain'],
+  71:['🌨️','Light snow'],73:['🌨️','Snow'],75:['❄️','Heavy snow'],77:['🌨️','Snow grains'],80:['🌦️','Showers'],81:['🌦️','Showers'],
+  82:['⛈️','Violent showers'],85:['🌨️','Snow showers'],86:['🌨️','Snow showers'],95:['⛈️','Thunderstorm'],96:['⛈️','Storm with hail'],99:['⛈️','Storm with hail']};
+const desc = (code, day) => { const d = WMO[code] || ['🌡️', '—']; return [!day && d[2] ? d[2] : d[0], d[1]]; };
+const deg = t => Math.round(t) + '°';
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function fit() { document.body.style.zoom = window.innerWidth / 960; }
+window.addEventListener('resize', fit); fit();
+
+let data = null, S = {};
+const api = (p, body) => fetch('/api/' + p, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CanvasFrame': '1' }, body: JSON.stringify(body) })
+  .then(r => r.json().then(j => { if (!r.ok) throw new Error(j.error || r.statusText); return j; }));
+let toastT;
+function toast(m, ms) {
+  const t = $('#toast'); t.textContent = m; t.classList.toggle('notice', !!ms); t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms || 2200);
+}
+// Messages sent with "open the home screen" (e.g. sync from another TV); only fresh ones, once each.
+let noticeId = '';
+function showNotice(n) {
+  if (!n || n.id === noticeId) return;
+  noticeId = n.id;
+  if (n.age < 20000) toast(n.text, 6000);
+}
+
+// ================================================================ clock
+const h24 = () => S.clock === '24';
+const fmtTime = (d, ampm) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: !h24() }).replace(ampm ? /^$/ : /\s?[AP]M$/i, '');
+function tickClock() {
+  const d = new Date();
+  $('#clock').textContent = fmtTime(d, false);
+  $('#date').textContent = h24() ? d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
+                                 : d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+}
+setInterval(tickClock, 1000);
+
+// ================================================================ render data
+function render() {
+  S = data.settings;
+  document.body.classList.toggle('glass', S.theme === 'glass');
+  $('#dashHint').textContent = 'Dashboard  ' + data.dash;
+  $('#dashHint').hidden = !S.show_dash;
+  tickClock();
+  renderWeather();
+  renderCalendar();
+  renderRows();
+  renderPhoto();
+  if ($('#forecast').classList.contains('open')) renderForecast();
+  // "Always show controls" changed in the dashboard: apply it now.
+  if (S.controls_always !== prevAlways) {
+    if (prevAlways !== undefined) { if (ctlAlways()) slideControls(true); else if (parked) slideControls(false); }
+    prevAlways = S.controls_always;
+  }
+}
+
+function renderWeather() {
+  const card = $('#weatherCard');
+  card.hidden = !S.weather_on;
+  card.style.display = S.weather_on ? '' : 'none';
+  const w = data.weather;
+  if (!S.weather_place || !w || !w.current) {
+    $('#wIcon').textContent = '🌤️'; $('#wTemp').textContent = '--°';
+    $('#wCond').textContent = S.weather_place ? 'Loading…' : 'Set a location';
+    $('#wRange').textContent = S.weather_place ? '' : 'Dashboard › Home screen';
+    $('#wPlace').textContent = S.weather_place ? S.weather_place : ''; $('#wUpdated').textContent = '';
+    return;
+  }
+  const c = w.current, d = desc(c.weather_code, c.is_day !== 0);
+  $('#wIcon').textContent = d[0];
+  $('#wTemp').textContent = deg(c.temperature_2m) + (w.unit || 'F');
+  $('#wCond').textContent = d[1];
+  $('#wRange').textContent = `H ${deg(w.daily.temperature_2m_max[0])}  ·  L ${deg(w.daily.temperature_2m_min[0])}  ·  Feels ${deg(c.apparent_temperature)}`;
+  $('#wPlace').textContent = S.weather_place;
+  $('#wUpdated').textContent = 'Updated ' + fmtTime(new Date(w.fetched), true);
+}
+
+// ---------------------------------------------------------------- calendar
+let monthOffset = 0;
+const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
+function dayLabel(t) {
+  const today = startOfToday();
+  if (t < today + DAY) return 'Today';
+  if (t < today + 2 * DAY) return 'Tomorrow';
+  return new Date(t).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
+const upcoming = ev => { const now = Date.now(); return ev.a ? ev.s + DAY > now : Math.max(ev.e, ev.s) > now; };
+function renderCalendar() {
+  const evs = data.events;
+  let line = null;
+  if (evs) {
+    const now = Date.now();
+    const ev = evs.find(upcoming);
+    if (ev && ev.s <= now + 7 * DAY) {
+      let when = ev.a ? dayLabel(Math.max(ev.s, now)) : dayLabel(ev.s) + ' ' + fmtTime(new Date(ev.s), true);
+      if (ev.s <= now && !ev.a) when = 'Now';
+      line = '📅 ' + when + ' · ' + ev.t;
+    }
+  }
+  $('#nextEvent').textContent = line || '';
+  $('#nextEvent').hidden = !line;
+  renderMonth();
+}
+function renderMonth() {
+  const today = new Date(), month = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+  $('#calTitle').textContent = month.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const dots = {};
+  for (const ev of (data && data.events) || []) {
+    const s = new Date(ev.s), end = Math.max(ev.e, ev.s + 1) - 1;
+    while (s.getTime() <= end) {
+      if (s.getFullYear() === month.getFullYear() && s.getMonth() === month.getMonth() && !dots[s.getDate()]) dots[s.getDate()] = ev.c;
+      s.setDate(s.getDate() + 1); s.setHours(0, 0, 0, 0);
+    }
+  }
+  let h = '<div class="cr">' + ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(n => `<div class="cc dn"><b>${n}</b></div>`).join('') + '</div>';
+  const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+  let day = 1 - month.getDay();
+  for (let w = 0; w < 6 && day <= days; w++) {
+    h += '<div class="cr">';
+    for (let i = 0; i < 7; i++, day++) {
+      if (day < 1 || day > days) { h += '<div class="cc"><b></b></div>'; continue; }
+      const isToday = monthOffset === 0 && day === today.getDate();
+      h += `<div class="cc${isToday ? ' today' : ''}"><b>${day}</b>${dots[day] ? `<i style="background:${esc(dots[day])}"></i>` : ''}</div>`;
+    }
+    h += '</div>';
+  }
+  $('#calGrid').innerHTML = h;
+  let a = '<div class="h">UPCOMING</div>', shown = 0, lastDay = null;
+  for (const ev of (data && data.events) || []) {
+    if (shown >= 5) break;
+    if (!upcoming(ev)) continue;
+    const dl = dayLabel(Math.max(ev.s, startOfToday()));
+    if (dl !== lastDay) { a += `<div class="d">${esc(dl)}</div>`; lastDay = dl; }
+    a += `<div class="e"><i style="background:${esc(ev.c)}"></i>${esc(ev.a ? 'All day' : fmtTime(new Date(ev.s), true))}&nbsp; ${esc(ev.t)}</div>`;
+    shown++;
+  }
+  if (!shown) a += `<div class="none">${data && data.events ? 'Nothing coming up' : 'Add a calendar in the dashboard\n(Home screen → Calendars)'}</div>`;
+  $('#agenda').innerHTML = a;
+}
+
+// ---------------------------------------------------------------- forecast
+let fcMode = 0;
+function renderForecast() {
+  document.body.classList.toggle('radar', fcMode === 2);
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', +t.dataset.tab === fcMode));
+  if (fcMode === 2) { radar.start(); return; }
+  radar.stop();
+  const w = data.weather, pills = $('#pills');
+  if (!w || !w.hourly) { pills.innerHTML = `<span style="font-size:11px;color:var(--muted)">${w ? 'Loading forecast…' : 'Set a location in the dashboard'}</span>`; return; }
+  const dly = w.daily;
+  let h = '';
+  if (fcMode === 0) {
+    const now = w.current.time.slice(0, 13);
+    let start = w.hourly.time.findIndex(t => t.slice(0, 13) >= now);
+    if (start < 0) start = 0;
+    for (let i = start; i < Math.min(start + 8, w.hourly.time.length); i++) {
+      const d = desc(w.hourly.weather_code[i], w.hourly.is_day[i] === 1);
+      const hr = +w.hourly.time[i].slice(11, 13);
+      const label = i === start ? 'Now' : h24() ? String(hr).padStart(2, '0') + ':00' : ((hr % 12) || 12) + (hr < 12 ? 'AM' : 'PM');
+      h += `<div class="pill"><span class="a">${label}</span><span class="b">${d[0]}</span><span class="c">${deg(w.hourly.temperature_2m[i])}</span></div>`;
+    }
+  } else {
+    for (let i = 0; i < Math.min(7, dly.time.length); i++) {
+      const d = desc(dly.weather_code[i], true);
+      const label = i === 0 ? 'Today' : new Date(dly.time[i] + 'T12:00').toLocaleDateString('en-US', { weekday: 'short' });
+      h += `<div class="pill"><span class="a">${label}</span><span class="b">${d[0]}</span><span class="c">${deg(dly.temperature_2m_max[i])}</span><span class="l">${deg(dly.temperature_2m_min[i])}</span></div>`;
+    }
+  }
+  pills.innerHTML = h;
+  if (dly.weather_code.length > 1) {
+    const d = desc(dly.weather_code[1], true);
+    $('#tmCond').textContent = d[1];
+    $('#tmTemp').textContent = deg(dly.temperature_2m_max[1]) + '  ' + deg(dly.temperature_2m_min[1]);
+    $('#tmIcon').textContent = d[0];
+  }
+  const sunT = iso => { const hh = +iso.slice(11, 13), mm = iso.slice(14, 16);
+    return h24() ? `${hh}:${mm}` : `${(hh % 12) || 12}:${mm}<small>${hh < 12 ? 'AM' : 'PM'}</small>`; };
+  $('#sunrise').innerHTML = sunT(dly.sunrise[0]);
+  $('#sunset').innerHTML = sunT(dly.sunset[0]);
+  const secs = Math.round(dly.daylight_duration[0]);
+  $('#dayLen').textContent = Math.floor(secs / 3600) + 'h ' + Math.floor(secs % 3600 / 60) + 'm';
+}
+
+// ---------------------------------------------------------------- radar (RainViewer over OpenStreetMap)
+const radar = (() => {
+  const Z = 7, T = 256, W = 768, H = 400, FRAME_MS = 550, HOLD_MS = 1600;
+  const cv = $('#radarCanvas'), ctx = cv.getContext('2d');
+  let base = null, frames = [], times = [], pastN = 0, idx = 0, timer = null, loadedAt = 0, key = '', running = false;
+  const img = src => new Promise(res => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+  async function compose(left, top, urlFor, filter) {
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const g = c.getContext('2d'), max = 1 << Z, jobs = [];
+    for (let ty = Math.floor(top / T); ty <= Math.floor((top + H) / T); ty++)
+      for (let tx = Math.floor(left / T); tx <= Math.floor((left + W) / T); tx++) {
+        if (ty < 0 || ty >= max) continue;
+        const x = ((tx % max) + max) % max;
+        jobs.push(img(urlFor(x, ty)).then(i => { if (i) { if (filter) g.filter = filter; g.drawImage(i, tx * T - left, ty * T - top); } }));
+      }
+    await Promise.all(jobs);
+    return c;
+  }
+  async function load() {
+    const w = data.weather;
+    if (!w || !isFinite(w.latitude)) { msg('Set a location in the dashboard'); return; }
+    const n = 1 << Z, lat = w.latitude * Math.PI / 180;
+    const cx = (w.longitude + 180) / 360 * n * T, cy = (1 - Math.log(Math.tan(lat) + 1 / Math.cos(lat)) / Math.PI) / 2 * n * T;
+    const left = Math.round(cx - W / 2), top = Math.round(cy - H / 2), k = left + ',' + top;
+    if (k !== key || !base) { msg('Loading map…'); base = await compose(left, top, (x, y) => `https://tile.openstreetmap.org/${Z}/${x}/${y}.png`, 'brightness(0.55) saturate(0.55) contrast(1.1)'); key = k; draw(); }
+    msg(frames.length ? '' : 'Loading radar frames…');
+    try {
+      const maps = await (await fetch('https://api.rainviewer.com/public/weather-maps.json')).json();
+      const past = maps.radar.past || [], now = maps.radar.nowcast || [], all = past.concat(now);
+      const fr = await Promise.all(all.map(f => compose(left, top, (x, y) => `${maps.host}${f.path}/${T}/${Z}/${x}/${y}/2/1_1.png`)));
+      frames = fr; times = all.map(f => f.time * 1000); pastN = past.length; idx = Math.max(0, pastN - 1);
+      loadedAt = Date.now();
+      msg(frames.length ? '' : 'No radar frames available');
+    } catch (e) { msg('Radar unavailable'); }
+    draw();
+  }
+  function msg(m) { $('#radarMsg').textContent = m; }
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    if (base) ctx.drawImage(base, 0, 0);
+    if (frames.length) {
+      ctx.globalAlpha = .85; ctx.drawImage(frames[Math.min(idx, frames.length - 1)], 0, 0); ctx.globalAlpha = 1;
+      const t = new Date(times[idx]);
+      ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(12, H - 44, 150, 32);
+      ctx.fillStyle = '#f6f1ea'; ctx.font = '20px "LG Smart UI", sans-serif';
+      ctx.fillText((idx >= pastN ? 'Forecast ' : '') + t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: !h24() }), 22, H - 21);
+      ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(12, H - 8, W - 24, 4);
+      ctx.fillStyle = '#e8c99a'; ctx.fillRect(12, H - 8, (W - 24) * (idx + 1) / frames.length, 4);
+    }
+    // location marker
+    ctx.beginPath(); ctx.arc(W / 2, H / 2, 6, 0, 7); ctx.fillStyle = '#e8c99a'; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#2b2218'; ctx.stroke();
+  }
+  function loop() {
+    if (!running) return;
+    let delay = FRAME_MS;
+    if (frames.length) { idx = (idx + 1) % frames.length; if (idx === pastN - 1 || idx === frames.length - 1) delay = HOLD_MS; draw(); }
+    timer = setTimeout(loop, delay);
+  }
+  return {
+    start() { if (running) return; running = true; if (Date.now() - loadedAt > 600000) load(); else draw(); clearTimeout(timer); timer = setTimeout(loop, FRAME_MS); },
+    stop() { running = false; clearTimeout(timer); },
+    showing: () => running,
+  };
+})();
+
+// ---------------------------------------------------------------- rows
+let inTiles = [], apTiles = [];
+function renderRows() {
+  const glass = S.theme === 'glass';
+  $('#inRow').innerHTML = data.inputs.map((i, n) => `<div class="tile text in${i.connected ? '' : ' nosig'}" data-i="${n}"><div class="t">${esc(i.label)}</div><div class="sub">${i.connected ? 'Connected' : 'No signal'}</div></div>`).join('');
+  $('#apRow').innerHTML = data.apps.map((a, n) => `<div class="tile icon ap" data-a="${n}">${a.symbol ? `<span class="sym">${a.symbol}</span>`
+    : `<img src="/api/icon?id=${encodeURIComponent(a.id)}" alt="">`}<div class="t">${esc(a.title)}</div></div>`).join('');
+  inTiles = [...document.querySelectorAll('#inRow .tile')];
+  apTiles = [...document.querySelectorAll('#apRow .tile')];
+  if (focus && focus.kind === 'in' && focus.i >= inTiles.length) focus.i = inTiles.length - 1;
+  if (focus && focus.kind === 'ap' && focus.i >= apTiles.length) focus.i = apTiles.length - 1;
+  paint();
+}
+
+// ---------------------------------------------------------------- photos & readability
+let curPhoto = null, layer = 0;
+function renderPhoto() {
+  const p = data.photo, name = p ? p.name : null;
+  if (name === curPhoto) return;
+  curPhoto = name;
+  const a = $('#phA'), b = $('#phB'), next = layer ? a : b, prev = layer ? b : a;
+  if (!name) { a.classList.remove('on'); b.classList.remove('on'); applyReadability(0, false); return; }
+  next.onload = () => {
+    layer ^= 1;
+    next.classList.add('on'); prev.classList.remove('on');
+    try { const r = readability(next); applyReadability(r[0], r[1]); } catch (e) { applyReadability(0, false); }
+  };
+  next.src = '/api/photo?name=' + encodeURIComponent(name);
+}
+/** Same measure as the Android app: p90 luminance + edge busyness of the text column; bright corners. */
+function readability(im) {
+  const W = 128, H = 72, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  const s = Math.max(W / im.naturalWidth, H / im.naturalHeight), dw = im.naturalWidth * s, dh = im.naturalHeight * s;
+  g.drawImage(im, (W - dw) / 2, (H - dh) / 2, dw, dh);
+  const px = g.getImageData(0, 0, W, H).data, lum = new Float32Array(W * H);
+  for (let i = 0; i < W * H; i++) lum[i] = (0.2126 * px[i * 4] + 0.7152 * px[i * 4 + 1] + 0.0722 * px[i * 4 + 2]) / 255;
+  const vals = []; let edges = 0, en = 0;
+  for (let y = 2; y < 33; y++) for (let x = 0; x < 32; x++) {
+    const v = lum[y * W + x]; vals.push(v);
+    if (x > 0 && y > 2) { edges += Math.abs(v - lum[y * W + x - 1]) + Math.abs(v - lum[(y - 1) * W + x]); en++; }
+  }
+  vals.sort((a, b) => a - b);
+  const p90 = vals[Math.floor(vals.length * .9)], edge = edges / Math.max(1, en);
+  const bias = data.period === 'day' || data.period === 'dawn' ? .05 : 0;
+  const level = Math.max(0, Math.min(1, Math.max((p90 + bias - .25) / .35, (edge - .02) / .03)));
+  const region = (x0, y0, x1, y1) => { let sum = 0, n = 0; for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { sum += lum[y * W + x]; n++; } return n ? sum / n : 0; };
+  const corners = Math.max(region(100, 0, W, 14), region(100, 60, W, H));
+  return [level, corners > .45 - bias];
+}
+function applyReadability(level, bright) {
+  $('#readScrim').style.opacity = level;
+  document.body.classList.toggle('strong', level > .25);
+  document.body.classList.toggle('bright', !!bright);
+}
+
+// ================================================================ focus & remote
+// focus: {kind: 'clock'|'weather'|'inT'|'apT'|'in'|'ap'|'tab'|'cal', i}
+let focus = null, lastFocus = null, parked = true, held = false, inOpen = false, apOpen = false, panel = null;
+const el = f => !f ? null : f.kind === 'clock' ? $('#clockCard') : f.kind === 'weather' ? $('#weatherCard')
+  : f.kind === 'inT' ? $('#inToggle') : f.kind === 'apT' ? $('#apToggle') : f.kind === 'in' ? inTiles[f.i]
+  : f.kind === 'ap' ? apTiles[f.i] : f.kind === 'tab' ? document.querySelector(`.tab[data-tab="${f.i}"]`) : f.kind === 'cal' ? $('#calTitle') : null;
+const weatherVisible = () => S.weather_on !== false;
+
+function setRow(which, open) {
+  if (which === 'in') inOpen = open; else apOpen = open;
+  $(which === 'in' ? '#inWrap' : '#apWrap').classList.toggle('out', !open);
+  $(which === 'in' ? '#inToggle' : '#apToggle').classList.toggle('hide', open);
+}
+function setPanel(p) {
+  if (panel === p) return;
+  for (const id of ['forecast', 'calendar']) {
+    const e = $('#' + id);
+    if (id === p) { e.classList.add('open'); requestAnimationFrame(() => e.classList.add('shown')); }
+    else { e.classList.remove('shown'); setTimeout(() => { if (panel !== id) e.classList.remove('open'); }, 150); }
+  }
+  panel = p;
+  if (p !== 'forecast') radar.stop();
+}
+
+/** Move focus; rows and panels open/close to follow it (same rules as the Android focus listener). */
+function go(f, opts) {
+  opts = opts || {};
+  if (f && (f.kind === 'inT' || f.kind === 'apT') && !opts.held) {
+    // Landing on a row button opens the row and selects its first tile.
+    const row = f.kind === 'inT' ? 'in' : 'ap', tiles = row === 'in' ? inTiles : apTiles;
+    if (tiles.length) { setRow(row, true); f = { kind: row, i: 0 }; }
+  }
+  held = !!opts.held && f && (f.kind === 'inT' || f.kind === 'apT');
+  focus = f;
+  if (!f || f.kind !== 'in') { if (inOpen) setRow('in', false); }
+  if (!f || f.kind !== 'ap') { if (apOpen) setRow('ap', false); }
+  if (f && f.kind === 'in' && !inOpen) setRow('in', true);
+  if (f && f.kind === 'ap' && !apOpen) setRow('ap', true);
+  setPanel(f && f.kind === 'tab' ? 'forecast' : f && f.kind === 'cal' ? 'calendar' : null);
+  if (f && f.kind === 'tab') { fcMode = f.i; renderForecast(); }
+  paint();
+}
+function paint() {
+  document.querySelectorAll('.focus').forEach(e => e.classList.remove('focus'));
+  const e = el(focus);
+  if (e) {
+    e.classList.add('focus');
+    if (focus.kind === 'in' || focus.kind === 'ap') scrollRow(e);
+  }
+}
+function scrollRow(tile) {
+  const row = tile.parentElement, wrap = row.parentElement;
+  const left = tile.offsetLeft, right = left + tile.offsetWidth, view = wrap.clientWidth;
+  let shift = parseFloat(row.dataset.shift || '0');
+  if (right - shift > view - 40) shift = right - view + 40;
+  if (left - shift < 10) shift = Math.max(0, left - 10);
+  row.dataset.shift = shift;
+  row.style.transform = `translateX(${-shift}px)`;
+}
+
+// ---- idle auto-hide
+let idleT = null, lastKeyAt = 0;
+// Controls (clock/weather column, INPUTS/APPS buttons) slide off the edges when idle unless "Always show controls" is on.
+let ctlShown = false, prevAlways;
+const ctlAlways = () => !!(S && S.controls_always);
+function slideControls(show) { ctlShown = show; document.body.classList.toggle('ctlout', !show); if (show) idleDimOff(); }
+// OLED idle dimming: while idle, ask the server how dark to be (night level, late fade, activity nearby) and darken the photo.
+// Any key brings it straight back. The server answers 0 on LCDs (their screen savers dim the backlight instead).
+let idleSince = Date.now(), dimT = null;
+function idleDimOff() { const d = document.getElementById('idleDim'); if (d) { d.style.transition = 'opacity .3s'; d.style.opacity = 0; } }
+function idleDimTick() {
+  clearTimeout(dimT);
+  if (parked && !ctlShown) {
+    api('home/dim?since=' + idleSince).then(r => {
+      const d = document.getElementById('idleDim');
+      if (d && parked && !ctlShown) { d.style.transition = 'opacity 4s'; d.style.opacity = r.oled ? Math.min(0.97, r.dim) : 0; }
+    }).catch(() => {});
+  }
+  dimT = setTimeout(idleDimTick, 30000);
+}
+setTimeout(idleDimTick, 5000);
+/** The button or card a menu was opened from (a row tile -> its INPUTS/APPS button, a panel -> its card). */
+function opener(f) {
+  if (!f) return f;
+  if (f.kind === 'in') return { kind: 'inT' };
+  if (f.kind === 'ap') return { kind: 'apT' };
+  if (f.kind === 'tab') return { kind: 'weather' };
+  if (f.kind === 'cal') return { kind: 'clock' };
+  return f;
+}
+function scheduleIdle() {
+  clearTimeout(idleT);
+  lastKeyAt = Date.now();
+  const sec = S.auto_hide_sec == null ? 15 : S.auto_hide_sec;
+  if (sec > 0) idleT = setTimeout(goIdle, sec * 1000);
+}
+/**
+ * No remote input for a while (or Back). Stage 1: remember the selection and let any open row/panel recoil.
+ * Stage 2, one more auto-hide period later (or right away if nothing was open): slide the controls off the edges.
+ */
+function goIdle() {
+  if (parked) {
+    if (!ctlAlways() && ctlShown) { lastFocus = opener(lastFocus); slideControls(false); setTimeout(idleDimTick, 1500); }
+    return;
+  }
+  const since = Date.now() - lastKeyAt;
+  if (radar.showing() && since < 120000) { clearTimeout(idleT); idleT = setTimeout(goIdle, 120000 - since); return; }
+  const menuOpen = inOpen || apOpen || !!panel;
+  lastFocus = focus;
+  parked = true;
+  idleSince = Date.now();
+  go(null);
+  if (ctlAlways()) return;
+  if (!menuOpen) { goIdle(); return; }
+  clearTimeout(idleT);
+  const sec = S.auto_hide_sec == null ? 15 : S.auto_hide_sec;
+  if (sec > 0) idleT = setTimeout(goIdle, sec * 1000);
+}
+function wake(k) {
+  idleDimOff();
+  slideControls(true);
+  parked = false;
+  let t = lastFocus;
+  if (t && (t.kind === 'in' && !inTiles[t.i] || t.kind === 'ap' && !apTiles[t.i])) t = null;
+  if (!t) {
+    // Fresh open: ↑ Inputs, ↓ Apps, ← weather card; anything else selects the APPS button (closed).
+    if (k === 'up' && inTiles.length) return go({ kind: 'in', i: 0 });
+    if (k === 'down' && apTiles.length) return go({ kind: 'ap', i: 0 });
+    if (k === 'left' && weatherVisible()) return go({ kind: 'weather' });
+    return go({ kind: 'apT' }, { held: true });
+  }
+  if (t.kind === 'inT' || t.kind === 'apT') return go(t, { held: true });
+  go(t);
+}
+function reset() {
+  // Back on the home screen (opened or relaunched): both rows hidden, nothing selected.
+  lastFocus = null; parked = true; monthOffset = 0; idleSince = Date.now();
+  go(null);
+  slideControls(ctlAlways());
+}
+
+function move(k) {
+  const f = focus;
+  switch (f.kind) {
+    case 'clock':
+      if (k === 'up') go({ kind: 'inT' }, { held: !inTiles.length });
+      else if (k === 'down') go(weatherVisible() ? { kind: 'weather' } : { kind: 'apT' });
+      else if (k === 'right' || k === 'ok') { monthOffset = 0; renderMonth(); go({ kind: 'cal' }); }
+      break;
+    case 'weather':
+      if (k === 'up') go({ kind: 'clock' });
+      else if (k === 'down') go({ kind: 'apT' });
+      else if (k === 'right' || k === 'ok') go({ kind: 'tab', i: fcMode });
+      break;
+    case 'inT': case 'apT': {
+      const row = f.kind === 'inT' ? 'in' : 'ap';
+      if (k === 'ok' || k === 'left') go({ kind: f.kind });
+      else if (k === 'down' && f.kind === 'inT') go({ kind: 'apT' }, { held: true });
+      else if (k === 'up' && f.kind === 'apT') go({ kind: 'inT' }, { held: true });
+      void row;
+      break;
+    }
+    case 'in':
+      if (k === 'left') go(f.i > 0 ? { kind: 'in', i: f.i - 1 } : { kind: 'clock' });
+      else if (k === 'right' && f.i < inTiles.length - 1) go({ kind: 'in', i: f.i + 1 });
+      else if (k === 'down') go({ kind: 'apT' });
+      else if (k === 'ok') api('input', { id: data.inputs[f.i].id }).catch(e => toast(e.message));
+      break;
+    case 'ap':
+      if (k === 'left') go(f.i > 0 ? { kind: 'ap', i: f.i - 1 } : weatherVisible() ? { kind: 'weather' } : { kind: 'clock' });
+      else if (k === 'right' && f.i < apTiles.length - 1) go({ kind: 'ap', i: f.i + 1 });
+      else if (k === 'up') go({ kind: 'inT' }, { held: !inTiles.length });
+      else if (k === 'ok') api('launch', { id: data.apps[f.i].id }).catch(e => toast(e.message));
+      else if (k === 'hold') {
+        const a = data.apps[f.i];
+        api('settings', { hide: a.id }).then(() => { toast(a.title + ' hidden (show it again from the dashboard)'); load(); }).catch(e => toast(e.message));
+      }
+      break;
+    case 'tab':
+      if (k === 'left') go(f.i > 0 ? { kind: 'tab', i: f.i - 1 } : { kind: 'weather' });
+      else if (k === 'right' && f.i < 2) go({ kind: 'tab', i: f.i + 1 });
+      // Up / Down leave the panel (it closes), as on the Android home screen.
+      else if (k === 'up') go({ kind: 'clock' });
+      else if (k === 'down') go({ kind: 'apT' });
+      break;
+    case 'cal':
+      if (k === 'right') { monthOffset++; renderMonth(); }
+      else if (k === 'left') { if (monthOffset > 0) { monthOffset--; renderMonth(); } else go({ kind: 'clock' }); }
+      else if (k === 'up') go({ kind: 'inT' }, { held: !inTiles.length });
+      else if (k === 'down') go(weatherVisible() ? { kind: 'weather' } : { kind: 'apT' });
+      break;
+  }
+}
+
+const KEYMAP = { 37: 'left', 38: 'up', 39: 'right', 40: 'down', 13: 'ok' };
+// Remote sounds: the server plays LG's own interface sounds (and stays quiet if they're switched off).
+const sound = kind => { api('home/sound', { kind }).catch(() => {}); };
+const focusKey = () => focus ? focus.kind + ':' + (focus.i == null ? '' : focus.i) + ':' + monthOffset : '';
+function moveWithSound(k) {
+  const before = focusKey();
+  move(k);
+  if (k === 'ok') sound('ok');
+  else if (focusKey() !== before) sound('move');
+}
+let okDown = 0, swallowOk = false;
+document.addEventListener('keydown', e => {
+  if (e.keyCode === 461 || e.keyCode === 27 || e.keyCode === 8) { e.preventDefault(); goIdle(); return; }
+  const k = KEYMAP[e.keyCode];
+  // webOS 7 shows LG's home as a layer over the app in front (this one), so the app list never changes and only
+  // this key (1536) reaches the page: ask the server to bring CanvasFrame back over LG's home.
+  if (e.keyCode === 1536) { api('home/reopen', {}).catch(() => {}); return; }
+  // Input button: open the Inputs row (the server also closes LG's input menu if it opened).
+  if (e.keyCode === 1537) { e.preventDefault(); openInputs(); return; }
+  if (!k) { api('home/log', { m: 'unhandled key ' + e.keyCode + ' ' + e.key }).catch(() => {}); return; }
+  e.preventDefault();
+  if (e.repeat && k === 'ok') return;
+  if (parked) { if (!e.repeat) { wake(k); scheduleIdle(); if (k === 'ok') swallowOk = true; } return; }
+  scheduleIdle();
+  if (k === 'ok') { okDown = Date.now(); return; }   // acted on at keyup (hold = hide app)
+  moveWithSound(k);
+});
+document.addEventListener('keyup', e => {
+  if (KEYMAP[e.keyCode] !== 'ok' || parked) return;
+  if (swallowOk) { swallowOk = false; return; }
+  if (!okDown || !focus) return;
+  const heldMs = Date.now() - okDown;
+  okDown = 0;
+  moveWithSound(heldMs > 700 && focus.kind === 'ap' ? 'hold' : 'ok');
+});
+
+// ================================================================ data loop
+let version = 0;
+function load() {
+  return api('home').then(d => { data = d; version = d.version; render(); }).catch(() => {});
+}
+// If the server stops answering (it moved port after a takeover/restore), find it on the other port.
+let misses = 0, build = null;
+function findServer() {
+  const ports = [8080, 8081].filter(p => String(p) !== location.port);
+  ports.forEach(p => fetch(`http://127.0.0.1:${p}/api/home/ver`).then(r => r.json()).then(j => {
+    if (j && 'version' in j) location.replace(`http://127.0.0.1:${p}/home`);
+  }).catch(() => {}));
+}
+setInterval(() => {
+  if (document.hidden) return;
+  api('home/ver').then(v => {
+    misses = 0;
+    if (build && v.build && v.build !== build) { location.reload(); return; }   // server restarted with new code
+    build = v.build;
+    if (v.version !== version) load();
+    showNotice(v.notice);
+  })
+    .catch(() => { if (++misses >= 3) findServer(); });
+}, 4000);
+setInterval(() => { if (!document.hidden) load(); }, 60000);   // inputs connecting, clock-driven tags
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { reset(); load(); } });
+// The app declares handlesRelaunch, so a relaunch (Home button, stock-home takeover) only sends this event:
+// the app has to bring its own window to the front.
+/** Show the Inputs row with the first input selected (Input button, or a launch asking for it). */
+function openInputs() {
+  if (!inTiles.length) return;
+  slideControls(true);
+  parked = false;
+  go({ kind: 'in', i: 0 });
+  scheduleIdle();
+}
+function launchParams() {
+  try { const p = window.PalmSystem && PalmSystem.launchParams; return typeof p === 'string' ? JSON.parse(p || '{}') : (p || {}); } catch (e) { return {}; }
+}
+document.addEventListener('webOSRelaunch', e => {
+  try { if (window.PalmSystem && PalmSystem.activate) PalmSystem.activate(); } catch (err) { /* not on webOS */ }
+  const params = Object.assign({}, launchParams(), (e && e.detail) || {});
+  reset();
+  load().then(() => { if (params.open === 'inputs') openInputs(); });
+  setTimeout(() => api('home/ver').then(v => showNotice(v.notice)).catch(() => {}), 600);
+});
+load().then(reset);
+</script>
+<div id="idleDim" style="position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:9999"></div>
+<!-- Doorbell (UniFi Protect, lib/doorbell.js): a centred card with the Protect snapshot refreshed about once a second. -->
+<style>
+  #doorPanel { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 400px; padding: 15px; border-radius: 22px;
+    background: linear-gradient(135deg, rgba(44,48,57,.96), rgba(25,28,34,.96)); border: 1.5px solid rgba(200,204,214,.4);
+    box-shadow: 0 14px 50px rgba(0,0,0,.6); z-index: 10000; display: none; font-family: 'Segoe UI', 'LG Smart UI', sans-serif; color: #f4f5f7; }
+  #doorPanel .hd { display: flex; align-items: center; gap: 13px; }
+  #doorPanel .bell { width: 44px; height: 44px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 38% 32%, #c9ae7c, #6e5a38 120%); }
+  #doorPanel .bell svg { width: 26px; height: 26px; }
+  #doorPanel .nm { flex: 1; min-width: 0; }
+  #doorPanel .t1 { font-size: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #doorPanel .t2 { font-size: 14px; color: #9ca0aa; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #doorPanel .rt { text-align: right; flex: none; }
+  #doorPanel .tm { font-size: 14px; color: #c9ccd3; }
+  #doorPanel .live { display: inline-flex; align-items: center; gap: 6px; margin-top: 5px; padding: 3px 11px; border-radius: 99px;
+    background: #4a2a30; color: #f1c9cd; font-size: 12px; font-weight: 600; letter-spacing: .08em; visibility: hidden; }
+  #doorPanel .live i { width: 7px; height: 7px; border-radius: 50%; background: #e0707a; }
+  #doorPanel .pic { position: relative; margin-top: 13px; width: 100%; padding-top: 75%; background: #000; border-radius: 13px; overflow: hidden; }
+  #doorPanel .pic img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; }
+  #doorPanel .pic .none { position: absolute; left: 0; top: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #8a8e98; }
+</style>
+<div id="doorPanel">
+  <div class="hd">
+    <div class="bell"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3.4C8.4 3.4 6.6 6.2 6.6 10v5.4L4.6 17.6h14.8l-2-2.2V10c0-3.8-1.8-6.6-5.4-6.6z"/><circle cx="12" cy="19.6" r="1.9"/><circle cx="12" cy="2.9" r="1.1"/></svg></div>
+    <div class="nm"><div class="t1" id="doorTitle"></div><div class="t2" id="doorCam"></div></div>
+    <div class="rt"><div class="tm" id="doorTime"></div><div class="live" id="doorLive"><i></i>LIVE</div></div>
+  </div>
+  <div class="pic"><img id="doorImg" alt=""><div class="none" id="doorNoPic">No picture (no Protect API key set)</div></div>
+</div>
+<script>
+// Doorbell: ask the server every 1.5 s (loopback); while active, refresh the snapshot about once a second.
+(() => {
+  const panel = document.getElementById('doorPanel'), img = document.getElementById('doorImg'), live = document.getElementById('doorLive');
+  let shown = null, snapTimer = null;
+  const fmt = t => new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const refresh = () => { const n = new Image(); n.onload = () => { img.src = n.src; live.style.visibility = 'visible'; }; n.src = '/api/home/doorsnap?t=' + Date.now(); };
+  const hide = () => { panel.style.display = 'none'; clearInterval(snapTimer); };
+  setInterval(() => {
+    if (document.hidden) return;
+    fetch('/api/home/door').then(r => r.json()).then(s => {
+      if (s && s.until) document.getElementById('doorCam').textContent = s.camera || '';
+      if (s && s.until && s.at !== shown) {
+        shown = s.at;
+        document.getElementById('doorTitle').textContent = s.label;
+        document.getElementById('doorTime').textContent = fmt(s.at);
+        document.getElementById('doorNoPic').style.display = s.snap ? 'none' : 'flex';
+        live.style.visibility = 'hidden';
+        img.removeAttribute('src');
+        panel.style.display = 'block';
+        clearInterval(snapTimer);
+        if (s.snap) { refresh(); snapTimer = setInterval(refresh, 1000); }
+      } else if ((!s || !s.until) && shown) { shown = null; hide(); }
+    }).catch(() => {});
+  }, 1500);
+  document.addEventListener('keydown', () => { if (shown && panel.style.display !== 'none') hide(); }, true);
+})();
+</script>
+</body>
+</html>

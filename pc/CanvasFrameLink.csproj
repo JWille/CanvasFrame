@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- CanvasFrame Link: tray app + optional Windows service, one exe. .NET Framework 4.8 is part of Windows, so nothing
+       needs installing on the PC; WebView2 (the Edge engine, part of Windows 11) draws the window. Build: pc/build.ps1 -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>latest</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>CanvasFrameLink</AssemblyName>
+    <RootNamespace>CanvasFrameLink</RootNamespace>
+    <ApplicationIcon>build\app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Version>2.3.0</Version>
+    <Product>CanvasFrame Link</Product>
+    <Company>CanvasFrame</Company>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <Nullable>disable</Nullable>
+    <!-- Published builds must not carry the builder's folder paths (they include the Windows user name): no debug
+         directory pointing at a .pdb, and source paths mapped to a neutral name. -->
+    <DebugType>none</DebugType>
+    <Deterministic>true</Deterministic>
+    <PathMap>$(MSBuildProjectDirectory)=CanvasFrameLink</PathMap>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" GeneratePathProperty="true" />
+    <Reference Include="System.Security" />
+    <Reference Include="System.ServiceProcess" />
+    <Reference Include="System.Web.Extensions" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="CanvasFrameLink.cs" />
+    <Compile Remove="build\**;dist\**;obj\**;bin\**" />
+    <EmbeddedResource Include="web\app.html" LogicalName="app.html" />
+    <EmbeddedResource Include="build\dashboard.css" LogicalName="dashboard.css" />
+  </ItemGroup>
+  <!-- One file to download: the WebView2 parts travel inside the exe (Embedded.cs loads them; the native loader is unpacked
+       next to the installed exe on first use). -->
+  <ItemGroup>
+    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\lib\net462\Microsoft.Web.WebView2.Core.dll" LogicalName="dll.Microsoft.Web.WebView2.Core.dll" />
+    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\lib\net462\Microsoft.Web.WebView2.WinForms.dll" LogicalName="dll.Microsoft.Web.WebView2.WinForms.dll" />
+    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\runtimes\win-x64\native\WebView2Loader.dll" LogicalName="native.WebView2Loader.dll" />
+  </ItemGroup>
+</Project>

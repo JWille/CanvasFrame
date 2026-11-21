@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CanvasFrame Doorbell</title>
+<style>html, body { margin: 0; background: transparent; overflow: hidden; }</style>
+</head>
+<body>
+<script>
+/*
+ * CanvasFrame's doorbell card over other apps and inputs. This app opens as an overlay window (transparent, no keyboard
+ * focus: the app underneath keeps the remote). The server launches it when an alert comes in while something other than
+ * CanvasFrame is on screen; the card itself (server/doorcard.html) closes the window when the alert ends.
+ */
+var PORTS = [8080, 8081], tries = 0;
+function probe(i) {
+  var port = PORTS[i], x = new XMLHttpRequest();
+  x.open('GET', 'http://127.0.0.1:' + port + '/api/home/ver');
+  x.timeout = 1500;
+  x.onload = function () {
+    var ok = false;
+    try { ok = x.status === 200 && 'version' in JSON.parse(x.responseText); } catch (e) { /* not ours */ }
+    if (ok) location.replace('http://127.0.0.1:' + port + '/home/doorcard');
+    else next(i);
+  };
+  x.onerror = x.ontimeout = function () { next(i); };
+  x.send();
+}
+function next(i) {
+  if (i + 1 < PORTS.length) return probe(i + 1);
+  if (++tries > 5) return window.close();   // no server: nothing to show
+  setTimeout(function () { probe(0); }, 1000);
+}
+probe(0);
+</script>
+</body>
+</html>

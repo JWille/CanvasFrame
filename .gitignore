@@ -1,0 +1,23 @@
+# Build output
+launcher/build/
+*.apk
+*.apk.idsig
+
+# Signing key: keep it out of git, back it up separately.
+# Losing it means uninstalling CanvasFrame (and re-granting its permissions) before the next install.
+*.keystore
+*.jks
+
+# Test screenshots (local reference only)
+screenshots/
+webos/build/
+
+# CanvasFrame Link build output
+pc/*.exe
+pc/dist/
+pc/build/
+pc/obj/
+pc/bin/
+
+# Local secrets (TOTP for Claude, etc.): never commit
+.secrets/

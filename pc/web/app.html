@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CanvasFrame</title>
+<style>
+/*DASHBOARD_CSS*/
+</style>
+<style>
+  /* CanvasFrame Link: the app page, in the dashboard's look (its stylesheet is copied in above at build time). */
+  .tvcard { display: flex; flex-direction: column; gap: 10px; }
+  .tvcard .acts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tvcard .acts button { padding: 6px 11px; font-size: 13px; border-radius: 10px; }
+  .tvcard .warnline { font-size: 12px; color: var(--warn); }
+  .wtile { cursor: pointer; }
+  .wtile:hover .wscreen { box-shadow: 0 0 0 2px var(--accent); }
+  .wtile:hover .wname span { color: var(--accent); }
+  .added { display: flex; gap: 14px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+  .added:first-child { border-top: 0; padding-top: 0; }
+  .added .ico svg { width: 36px; height: 36px; display: block; }
+  .added .body { flex: 1; min-width: 0; }
+  .added .body .sub { margin-top: 2px; }
+  dialog.box { max-width: 560px; width: calc(100% - 32px); padding: 0; border: 1px solid var(--line); border-radius: 16px;
+    background: var(--bg); color: var(--text); box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  html.studio dialog.box { background: #0c0c0c; border-radius: 6px; }
+  html.light dialog.box { background: #fffdf9; }
+  html.light.studio dialog.box { background: #fff; }
+  dialog.box::backdrop { background: rgba(0,0,0,.6); }
+  dialog.box .hd { padding: 18px 22px 4px; font-size: 20px; font-weight: 300; }
+  dialog.box .bd { padding: 8px 22px 4px; line-height: 1.5; }
+  dialog.box .bd p { margin: 0 0 12px; }
+  dialog.box .bd ol { margin: 0 0 12px; padding-left: 22px; }
+  dialog.box .bd li { margin-bottom: 6px; }
+  dialog.box .ft { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 22px 20px; }
+  dialog.box.warn { border: 2px solid var(--warn); }
+  dialog.box.warn .hd { color: var(--warn); }
+  .field { display: block; margin: 0 0 14px; }
+  .field > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .field input[type=text] { width: 100%; }
+  input.secret:not(:placeholder-shown) { -webkit-text-security: disc; }
+  .check { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 12px; cursor: pointer; }
+  .check input { margin-top: 3px; }
+  .check small { display: block; color: var(--muted); font-size: 12px; }
+  .check.sub2 { margin-left: 26px; }
+  .check[hidden] { display: none; }
+  .err { color: var(--bad); font-size: 13px; min-height: 18px; margin: 4px 0 0; }
+  .busy { opacity: .6; pointer-events: none; }
+  .empty { text-align: center; padding: 30px 10px; }
+  .empty p { margin: 0 0 14px; }
+  .note { font-size: 12px; color: var(--muted); margin-top: 6px; white-space: pre-line; }
+</style>
+<script>
+/* Look and mode: the shared choice from the TVs (opt:look), Auto following Windows' light/dark setting. */
+function applyLook(look, mode) {
+  var d = document.documentElement;
+  try {
+    if (look) localStorage.setItem('cf.theme', look); else look = localStorage.getItem('cf.theme') || 'studio';
+    if (mode) localStorage.setItem('cf.mode', mode); else mode = localStorage.getItem('cf.mode') || 'auto';
+  } catch (e) { look = look || 'studio'; mode = mode || 'auto'; }
+  var light = mode === 'light' || (mode === 'auto' && matchMedia('(prefers-color-scheme: light)').matches);
+  d.classList.toggle('studio', look !== 'classic');
+  d.classList.toggle('light', light);
+}
+applyLook();
+</script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="ident">
+      <div class="brandmark" id="brandMark" aria-hidden="true"></div>
+      <div>
+        <div class="kicker">CanvasFrame · this PC</div>
+        <h1>Your TVs</h1>
+        <div class="sub" id="model"></div>
+      </div>
+    </div>
+    <div class="row" style="flex:none">
+      <span class="pill"><i class="dot" id="liveDot"></i><span id="liveText">Starting…</span></span>
+      <button class="pill" id="addBtn">Add a TV</button>
+    </div>
+  </header>
+
+  <section id="main">
+    <div id="emptyBox" class="card empty" hidden>
+      <p><b>No TVs yet.</b></p>
+      <p class="sub">Add a CanvasFrame TV by its address. Every TV linked with it shows up here too.</p>
+      <button class="on" onclick="openAdd()">Add a CanvasFrame TV</button>
+    </div>
+
+    <div id="wallBox" hidden>
+      <h2 style="margin-top:0">Right now</h2>
+      <div class="card"><div class="wall" id="wall"></div>
+        <p class="sub" style="margin:12px 0 0">What each screen shows, dimmed like its backlight. Click a TV to open its dashboard; the buttons act on it right away.</p></div>
+    </div>
+
+    <div id="pcBox" hidden>
+      <h2>This PC</h2>
+      <div class="card">
+        <div class="pref">
+          <div class="txt"><b>Monitor for this PC</b><span>The TV this computer uses as its screen: when the display wakes, the TV switches to the computer (with its picture mode); when it turns off, the TV goes back to CanvasFrame. Choose the input and picture mode on that TV's dashboard (Remote → Your computer).</span></div>
+          <select id="monSel"></select>
+        </div>
+        <div class="pref" id="svcRow">
+          <div class="txt"><b>Also at the login screen</b><span id="svcDesc">While nobody is signed in to Windows, this app isn't running: a small Windows service does it then. Installing it asks for administrator permission once.</span></div>
+          <label class="switch"><input type="checkbox" id="svcOn"><span></span></label>
+        </div>
+        <div class="pref">
+          <div class="txt"><b>Start with Windows</b><span>Keep CanvasFrame in the tray (notification area) after you sign in.</span></div>
+          <label class="switch"><input type="checkbox" id="winOn"><span></span></label>
+        </div>
+        <div class="sub" id="monLast" style="margin-top:10px"></div>
+      </div>
+    </div>
+
+    <div id="addedBox" hidden>
+      <h2>TVs added to this PC</h2>
+      <div class="card"><div id="addedList"></div>
+        <p class="sub" style="margin:12px 0 0">This PC reads every linked TV through these. A TV with its own API key here can also be controlled when its dashboard has sign-in on.</p></div>
+    </div>
+    <p class="sub" id="ver" style="margin-top:28px"></p>
+  </section>
+</div>
+
+<dialog class="box" id="addBox" aria-labelledby="addTitle">
+  <form method="dialog" id="addForm">
+    <div class="hd" id="addTitle">Add a CanvasFrame TV</div>
+    <div class="bd">
+      <label class="field"><span>TV address (shown on the CanvasFrame home screen, e.g. 192.168.1.50)</span>
+        <input type="text" id="addIp" autocomplete="off" spellcheck="false" placeholder="10.0.0.20" required></label>
+      <label class="field"><span>API key (from the TV's dashboard: Privacy → API keys). Leave empty if the dashboard has no sign-in: a key is made for this PC.</span>
+        <input type="text" class="secret" id="addKey" autocomplete="off" spellcheck="false" placeholder="cfk_…"></label>
+      <label class="check"><input type="checkbox" id="addMon"><span><b>Monitor for this PC</b><small>This computer uses this TV as its screen.</small></span></label>
+      <label class="check sub2" id="addLoginRow" hidden><input type="checkbox" id="addLogin"><span>Also at the Windows login screen<small>Installs a small service; Windows asks for administrator permission.</small></span></label>
+      <p class="err" id="addErr"></p>
+    </div>
+    <div class="ft"><button type="button" id="addCancel">Cancel</button><button type="submit" class="on" id="addGo">Add</button></div>
+  </form>
+</dialog>
+
+<dialog class="box warn" id="adbBox" aria-labelledby="adbTitle">
+  <div class="hd" id="adbTitle">Turn on debugging</div>
+  <div class="bd">
+    <p id="adbWhy"></p>
+    <ol>
+      <li>On the TV: <b>Settings → System → About</b>, select <b>Android TV OS build</b> seven times until it says you're a developer.</li>
+      <li>Back in <b>Settings → System → Developer options</b>, turn on <b>USB debugging</b>.</li>
+      <li>The TV then asks <b>"Allow USB debugging?"</b> for CanvasFrame: tick <b>Always allow from this computer</b> and choose <b>Allow</b>.</li>
+    </ol>
+    <p class="sub">CanvasFrame uses this only inside the TV, to switch inputs, change the picture and press keys. Nothing outside the TV connects to it.</p>
+    <p class="err" id="adbErr"></p>
+  </div>
+  <div class="ft"><button type="button" id="adbLater">Later</button><button type="button" class="on" id="adbOk">OK, it's done</button></div>
+</dialog>
+
+<div id="toast" role="status"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let toastTimer;
+function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 3200); }
+async function call(url, body) {
+  const r = await fetch(url, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CanvasFrame': '1' }, body: JSON.stringify(body) });
+  let j = null; try { j = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error((j && j.error) || ('HTTP ' + r.status));
+  return j;
+}
+const local = (p, b) => call('/local/' + p, b);
+const tvApi = (id, p, b) => call('/tv/' + encodeURIComponent(id) + '/api/' + p, b);
+
+const BRANDS = { lg: { text: 'LG', color: '#a50034' }, hisense: { text: 'H', color: '#00a19a' }, roku: { text: 'R', color: '#6f2da8' },
+  valerion: { text: 'V', color: '#1f3a5f' }, android: { text: 'A', color: '#2e7d32' } };
+function brandSvg(b) {
+  const x = BRANDS[b] || { text: 'CF', color: '#8a7a64' }, big = x.text.length < 2;
+  return `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><rect width="64" height="64" rx="15" fill="${x.color}"/>` +
+    `<text x="32" y="${big ? 45 : 42}" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="${big ? 36 : 27}" font-weight="700" ` +
+    `fill="#fff" text-anchor="middle" letter-spacing="${big ? 0 : -1}">${x.text}</text></svg>`;
+}
+$('#brandMark').innerHTML = brandSvg('');
+
+// ---- same photo together: the photo each synced TV shows right now (mirror of the dashboard's sharedPhotoFor)
+const siteItem = (v, k) => (v && v.items && v.items[k] && !v.items[k].x && v.items[k].d) || null;
+function hash32(x) { let h = x >>> 0; h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0; h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0; return (h ^ (h >>> 16)) >>> 0; }
+function samePhoto(slot, n) { let i = hash32(slot) % n; if (n > 1 && i === hash32(slot - 1) % n) i = (i + 1) % n; return i; }
+function sharedPhotoFor(v, id, skew) {
+  const opt = siteItem(v, 'opt:saver') || {};
+  if (!opt.sync || opt.sync === 'off') return '';
+  const myRoom = (siteItem(v, 'place:' + v.self) || {}).room;
+  if (v.plan && v.plan.names && v.plan.names.length && (opt.sync === 'all' || (siteItem(v, 'place:' + id) || {}).room === myRoom))
+    return v.plan.names[samePhoto(Math.floor((Date.now() - skew) / v.plan.ms), v.plan.names.length)];
+  const room = (siteItem(v, 'place:' + id) || {}).room;
+  if (opt.sync === 'room' && !room) return '';
+  let pool = null;
+  for (const k in v.items) {
+    if (!k.startsWith('dev:') || !siteItem(v, k)) continue;
+    const d = k.slice(4), pics = siteItem(v, 'pics:' + d);
+    if (!pics) continue;
+    if (opt.sync === 'room' && (siteItem(v, 'place:' + d) || {}).room !== room) continue;
+    const set = new Set(pics.names || []);
+    pool = pool ? pool.filter(n => set.has(n)) : (pics.names || []).slice();
+  }
+  if (!pool || pool.length < 2) return '';
+  pool.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  const ms = Math.max(1, Math.min(240, +opt.min || 10)) * 60000;
+  return pool[samePhoto(Math.floor((Date.now() - skew) / ms), pool.length)];
+}
+
+// ---- state from the app, every few seconds
+let S = null, wallSig = '', lookSig = '';
+async function refresh() {
+  try { S = await local('state'); render(); } catch (e) { $('#liveText').textContent = e.message; }
+}
+function lookQuery() {
+  const l = siteItem(S && S.site, 'opt:look');
+  return l ? `?look=${encodeURIComponent(l.look)}&mode=${encodeURIComponent(l.mode)}` : '';
+}
+/** Opens a TV's dashboard here, signed in: the app gets a one-time pass for it with its API key (when the TVs have sign-in on). */
+async function openTv(t) {
+  let url = t.url + '/' + lookQuery() + '#overview';
+  try { url = (await local('open', { id: t.id })).url || url; } catch (e) { /* without a pass: the TV asks for a code */ }
+  location.href = url;
+}
+
+function render() {
+  const tvs = S.tvs, added = tvs.filter(t => t.added);
+  const l = siteItem(S.site, 'opt:look');
+  if (l && l.look + l.mode !== lookSig) { lookSig = l.look + l.mode; applyLook(l.look, l.mode); }
+  $('#model').textContent = S.machine + (tvs.length ? ' · ' + tvs.length + ' TV' + (tvs.length === 1 ? '' : 's') : '');
+  const online = tvs.filter(t => t.state && t.state !== 'away').length;
+  $('#liveDot').className = 'dot ' + (!tvs.length ? '' : online ? 'ok' : 'bad');
+  $('#liveText').textContent = !tvs.length ? 'No TVs yet' : online + ' of ' + tvs.length + ' online';
+  $('#emptyBox').hidden = added.length > 0;
+  $('#wallBox').hidden = $('#pcBox').hidden = $('#addedBox').hidden = added.length === 0;
+  $('#ver').textContent = 'CanvasFrame Link ' + S.version + (S.siteFrom ? ' · TV states via ' + S.siteFrom : '');
+  renderWall();
+  renderPc();
+  renderAdded();
+  checkAdb();
+}
+
+// A tile per TV, like the dashboard's wall, with quick actions.
+function renderWall() {
+  const v = S.site, skew = S.skew || 0;
+  const via = (S.tvs.find(t => t.added && t.reachable) || {}).id;   // photos come from a TV this PC can reach (every TV has them all)
+  const tiles = S.tvs.map(t => {
+    const e = siteItem(v, 'env:' + t.devId) || {}, sh = e.shows || {};
+    const away = t.state === 'away';
+    let photo = '', label = '';
+    if (away) label = t.label || 'Not answering';
+    else if (sh.kind === 'off' || e.screen === 'off') label = 'Off';
+    else if (sh.kind === 'photo' || sh.kind === 'home') {
+      photo = (sh.sync && sharedPhotoFor(v, t.devId, skew)) || sh.photo || '';
+      if (!photo) label = sh.kind === 'home' ? 'Home screen' : 'Photo screen saver';
+    } else label = sh.label || t.label || 'On';
+    const b = (e.backlight != null ? Math.max(0.18, Math.min(1, 0.18 + 0.82 * e.backlight / 100)) : 1) * (1 - Math.min(0.9, +(sh.dim || 0)));
+    const info = away ? '' : [t.label, e.backlight != null && sh.kind !== 'off' ? 'backlight ' + e.backlight : ''].filter(Boolean).join(' · ');
+    const acts = [];
+    if (!away) {
+      acts.push(`<button data-act="saver" data-id="${esc(t.id)}">Screen saver</button>`);
+      acts.push(`<button data-act="home" data-id="${esc(t.id)}">Home</button>`);
+      if (t.platform === 'android') acts.push(`<button data-act="sleep" data-id="${esc(t.id)}">Sleep</button>`);
+    }
+    if ((away || label === 'Off') && t.canWake) acts.push(`<button data-act="wol" data-id="${esc(t.id)}" title="Wake-on-LAN">Wake</button>`);
+    if (t.pcLink) acts.push(`<button data-act="pc" data-id="${esc(t.id)}">Switch to this PC</button>`);
+    const warn = t.added && t.platform === 'android' && t.adb && t.adb !== 'CONNECTED' ? `<div class="warnline">Debugging isn't allowed yet · <a href="#" data-adb="${esc(t.id)}" style="color:inherit">show the steps</a></div>` : '';
+    return { sig: [t.id, photo, label, info, b.toFixed(2), acts.length, warn].join('/'), html: `<div class="tvcard">
+      <div class="wtile" data-open="${esc(t.id)}" title="Open ${esc(t.name)}'s dashboard"><div class="wscreen${away ? ' away' : ''}${label === 'Off' ? ' off' : ''}">
+        ${photo && via ? `<img alt="" src="/tv/${encodeURIComponent(via)}/api/photo?name=${encodeURIComponent(photo)}&thumb=1" style="filter:brightness(${b.toFixed(2)})" onerror="this.remove()">` : ''}
+        ${photo && via ? '' : `<span class="wlabel">${esc(label)}</span>`}${photo && sh.sync ? '<span class="wsync">together</span>' : ''}</div>
+        <div class="wname">${brandSvg(t.brand)}<span>${esc(t.name || 'TV')}</span>${t.monitor ? '<span class="wme">this PC\'s monitor</span>' : ''}</div><div class="winfo">${esc(info)}</div></div>
+      ${acts.length ? `<div class="acts">${acts.join('')}</div>` : ''}${warn}</div>` };
+  });
+  const sig = tiles.map(t => t.sig).join('|');
+  if (sig === wallSig) return;
+  wallSig = sig;
+  $('#wall').innerHTML = tiles.map(t => t.html).join('');
+}
+setInterval(() => { if (S) renderWall(); }, 1000);   // synced photos flip on the minute
+
+$('#wall').addEventListener('click', async ev => {
+  const a = ev.target.closest('[data-adb]');
+  if (a) { ev.preventDefault(); showAdb(S.tvs.find(t => t.id === a.dataset.adb), true); return; }
+  const b = ev.target.closest('button[data-act]');
+  if (b) {
+    const t = S.tvs.find(x => x.id === b.dataset.id);
+    b.disabled = true;
+    try {
+      let r;
+      if (b.dataset.act === 'saver') r = await tvApi(t.id, 'screensaver', { preview: true, openHome: true });
+      else if (b.dataset.act === 'home') r = await tvApi(t.id, 'home', {});
+      else if (b.dataset.act === 'sleep') r = await tvApi(t.id, 'key', { key: 'SLEEP' });
+      else if (b.dataset.act === 'wol') r = await local('wake', { id: t.id });
+      else if (b.dataset.act === 'pc') r = await tvApi(t.id, 'pc', { event: 'on', from: S.machine });
+      toast((r && r.result) || ({ saver: 'Screen saver starting', home: 'Opening CanvasFrame', sleep: 'Going to sleep', wake: 'Waking up', pc: 'Switching' })[b.dataset.act] + ' · ' + t.name);
+      local('refresh', {});
+    } catch (e) { toast(e.message); }
+    b.disabled = false;
+    return;
+  }
+  const tile = ev.target.closest('[data-open]');
+  if (tile) openTv(S.tvs.find(t => t.id === tile.dataset.open));
+});
+
+// This PC: monitor, login-screen service, start with Windows.
+function renderPc() {
+  const m = S.monitor, sel = $('#monSel');
+  const choices = S.tvs.filter(t => t.added && (t.pcLink || t.monitor));
+  const opts = '<option value="">None</option>' + choices.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('');
+  if (sel.dataset.sig !== opts) { sel.innerHTML = opts; sel.dataset.sig = opts; }
+  if (document.activeElement !== sel) sel.value = m.id || '';
+  const svc = m.service;
+  $('#svcRow').hidden = !m.id && !svc.installed;
+  if (document.activeElement !== $('#svcOn')) $('#svcOn').checked = svc.installed;
+  $('#svcDesc').textContent = svc.installed
+    ? (svc.running ? 'The CanvasFrame Link service is running' + (svc.tv ? ' for ' + svc.tv : '') + ': it also handles the login screen and sleep / shutdown.' : 'The service is installed but not running.')
+      + (m.id && m.by !== 'service' && svc.running ? ' It serves a different TV than the one chosen above: switch this off and on to move it.' : '')
+    : "While nobody is signed in to Windows, this app isn't running: a small Windows service does it then. Installing it asks for administrator permission once.";
+  if (document.activeElement !== $('#winOn')) $('#winOn').checked = S.withWindows;
+  $('#monLast').textContent = !m.id ? (choices.length ? '' : 'None of your TVs can follow a PC yet (CanvasFrame 3.29 or newer on an Android TV).')
+    : (m.by === 'service' ? 'Handled by the service (also at the login screen).' : 'Handled by this app while you are signed in.')
+      + (m.last ? ' Last: ' + m.last + (m.lastAt ? ' (' + m.lastAt + ')' : '') : '');
+}
+$('#monSel').addEventListener('change', async e => {
+  try { S = await local('monitor', { id: e.target.value }); render(); toast(e.target.value ? 'This PC now follows ' + e.target.selectedOptions[0].textContent : 'Monitor off'); } catch (err) { toast(err.message); }
+});
+$('#svcOn').addEventListener('change', async e => {
+  const on = e.target.checked, row = $('#svcRow');
+  row.classList.add('busy');
+  toast(on ? 'Windows will ask for administrator permission…' : 'Removing the service (Windows asks for permission)…');
+  try { S = await local('service', { on }); render(); toast(on ? 'Service installed' : 'Service removed'); }
+  catch (err) { e.target.checked = !on; toast(err.message); }
+  row.classList.remove('busy');
+});
+$('#winOn').addEventListener('change', async e => {
+  try { S = await local('withWindows', { on: e.target.checked }); render(); } catch (err) { toast(err.message); }
+});
+
+function renderAdded() {
+  $('#addedList').innerHTML = S.tvs.filter(t => t.added).map(t => `<div class="added"><div class="ico">${brandSvg(t.brand)}</div><div class="body">
+      <b>${esc(t.name || t.url)}</b>${t.monitor ? ' <span class="tag">this PC\'s monitor</span>' : ''}
+      <div class="sub">${esc(t.url.replace('https://', ''))} · ${t.hasKey ? 'API key saved (only for your Windows account)' : 'no API key'} · ${t.reachable ? 'answering' : esc(t.label || 'not answering')}${t.version ? ' · CanvasFrame ' + esc(t.version) : ''}</div>
+    </div><button data-remove="${esc(t.id)}" style="flex:none">Remove</button></div>`).join('');
+}
+$('#addedList').addEventListener('click', async ev => {
+  const b = ev.target.closest('[data-remove]');
+  if (!b) return;
+  const t = S.tvs.find(x => x.id === b.dataset.remove);
+  if (!confirm(`Remove ${t.name} from this PC?\n\nNothing changes on the TV. Its API key for this PC stays on the TV until you revoke it there (Privacy → API keys).`)) return;
+  try { S = await local('remove', { id: t.id }); render(); toast('Removed'); } catch (e) { toast(e.message); }
+});
+
+// ---- add a TV (opens by itself on the first run)
+function openAdd() {
+  $('#addErr').textContent = '';
+  const h = S && S.hint;   // downloaded from a TV: that TV's address
+  $('#addIp').value = h ? h.url.replace(/^https:\/\//, '').replace(/:9443$/, '') : ''; $('#addKey').value = '';
+  $('#addTitle').textContent = h && h.name ? 'Add ' + h.name : 'Add a CanvasFrame TV';
+  const hasMon = S && S.monitor && S.monitor.id;
+  $('#addMon').checked = !hasMon; $('#addLogin').checked = false;
+  $('#addLoginRow').hidden = !$('#addMon').checked;
+  $('#addBox').showModal();
+  (h ? $('#addKey') : $('#addIp')).focus();
+}
+$('#addBtn').onclick = openAdd;
+$('#addCancel').onclick = () => $('#addBox').close();
+$('#addMon').onchange = () => { $('#addLoginRow').hidden = !$('#addMon').checked; };
+$('#addForm').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const f = $('#addForm');
+  $('#addErr').textContent = '';
+  f.classList.add('busy'); $('#addGo').textContent = 'Connecting…';
+  try {
+    const r = await local('add', { address: $('#addIp').value, key: $('#addKey').value, monitor: $('#addMon').checked, loginScreen: $('#addLogin').checked });
+    $('#addBox').close();
+    toast('Added ' + r.name + (r.note ? '' : ''));
+    if (r.note) setTimeout(() => toast(r.note.split('\n').pop()), 3300);
+    await refresh();
+  } catch (e) { $('#addErr').textContent = e.message; }
+  f.classList.remove('busy'); $('#addGo').textContent = 'Add';
+});
+
+// ---- debugging on an Android TV: guide the user, then check again on OK
+const adbShown = new Set();
+let adbFor = null;
+function checkAdb() {
+  if ($('#adbBox').open || $('#addBox').open) return;
+  const t = S.tvs.find(t => t.added && t.reachable && t.platform === 'android' && t.adb && t.adb !== 'CONNECTED' && !adbShown.has(t.id));
+  if (t) showAdb(t, false);
+}
+function showAdb(t, again) {
+  if (!t) return;
+  adbShown.add(t.id); adbFor = t;
+  $('#adbTitle').textContent = 'Turn on debugging on ' + t.name;
+  $('#adbWhy').innerHTML = (t.adb === 'WAITING_FOR_APPROVAL'
+    ? `${esc(t.name)} is waiting for you to allow CanvasFrame: a <b>"Allow USB debugging?"</b> message should be on the TV now (step 3).`
+    : `CanvasFrame on ${esc(t.name)} can't control the TV yet: it needs the TV's debugging, which is switched off or not allowed.`)
+    + ' Until then it can show photos, but not switch inputs, change the picture or press keys.';
+  $('#adbErr').textContent = '';
+  if (!$('#adbBox').open) $('#adbBox').showModal();
+}
+$('#adbLater').onclick = () => $('#adbBox').close();
+$('#adbOk').onclick = async () => {
+  const b = $('#adbOk');
+  b.disabled = true; b.textContent = 'Checking…';
+  try {
+    let st = null;
+    for (let i = 0; i < 6; i++) {   // CanvasFrame reconnects when asked; give the TV a few seconds
+      st = await tvApi(adbFor.id, 'status');
+      if (st.adb === 'CONNECTED') break;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    if (st && st.adb === 'CONNECTED') { $('#adbBox').close(); toast(adbFor.name + ' is ready'); local('refresh', {}); }
+    else $('#adbErr').textContent = st && st.adb === 'WAITING_FOR_APPROVAL'
+      ? 'Not allowed yet: choose Allow on the TV ("Allow USB debugging?"), then OK again.'
+      : 'Still not connected' + (st && st.adbError ? ' (' + st.adbError + ')' : '') + '. Check that USB debugging is on, then OK again.';
+  } catch (e) { $('#adbErr').textContent = e.message; }
+  b.disabled = false; b.textContent = "OK, it's done";
+};
+
+// The tray app can ask for something by putting a script in the address (#openAdd()).
+function fromHash() {
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (h === 'openAdd()') { history.replaceState(null, '', '/'); setTimeout(openAdd, 300); }
+}
+
+(async () => {
+  await refresh();
+  if (S && !S.tvs.some(t => t.added)) openAdd();
+  fromHash();
+  setInterval(refresh, 4000);
+})();
+matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => applyLook());
+</script>
+</body>
+</html>

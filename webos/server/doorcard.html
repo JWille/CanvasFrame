@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CanvasFrame Doorbell</title>
+<!-- The doorbell card over other apps and inputs, shown in the overlay app com.canvasframe.door (webos/door). Same design as
+     the card in home.html (and the Hisense's Doorbell.java), drawn at 400 px and scaled to the chosen size, in the chosen
+     corner. Asks the server (loopback) every second; closes its window when the alert ends. -->
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; width: 100%; height: 100%; }
+  #card { position: fixed; width: 400px; padding: 15px; box-sizing: content-box; border-radius: 22px;
+    background: linear-gradient(135deg, rgba(44,48,57,.82), rgba(25,28,34,.82)); border: 1.5px solid rgba(200,204,214,.4);
+    box-shadow: 0 14px 50px rgba(0,0,0,.45); font-family: 'LG Smart UI', 'Museo Sans', sans-serif; color: #f4f5f7;
+    opacity: 0; transition: opacity .35s; }
+  #card.on { opacity: 1; }
+  .hd { display: flex; align-items: center; gap: 13px; }
+  .bell { width: 44px; height: 44px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 38% 32%, #c9ae7c, #6e5a38 120%); }
+  .bell svg { width: 26px; height: 26px; }
+  .nm { flex: 1; min-width: 0; }
+  .t1 { font-size: 20px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .t2 { font-size: 14px; color: #9ca0aa; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rt { text-align: right; flex: none; }
+  .tm { font-size: 14px; color: #c9ccd3; }
+  .live { display: inline-flex; align-items: center; gap: 6px; margin-top: 5px; padding: 3px 11px; border-radius: 99px;
+    background: #4a2a30; color: #f1c9cd; font-size: 12px; font-weight: 600; letter-spacing: .08em; visibility: hidden; }
+  .live i { width: 7px; height: 7px; border-radius: 50%; background: #e0707a; }
+  .pic { position: relative; margin-top: 13px; width: 100%; padding-top: 75%; background: #000; border-radius: 13px; overflow: hidden; }
+  .pic img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; }
+  .pic .none { position: absolute; left: 0; top: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #8a8e98; }
+</style>
+</head>
+<body>
+<div id="card">
+  <div class="hd">
+    <div class="bell"><svg viewBox="0 0 24 24" fill="#fff"><path d="M12 3.4C8.4 3.4 6.6 6.2 6.6 10v5.4L4.6 17.6h14.8l-2-2.2V10c0-3.8-1.8-6.6-5.4-6.6z"/><circle cx="12" cy="19.6" r="1.9"/><circle cx="12" cy="2.9" r="1.1"/></svg></div>
+    <div class="nm"><div class="t1" id="title"></div><div class="t2" id="cam"></div></div>
+    <div class="rt"><div class="tm" id="time"></div><div class="live" id="live"><i></i>LIVE</div></div>
+  </div>
+  <div class="pic"><img id="img" alt=""><div class="none" id="nopic">No picture (no Protect API key set)</div></div>
+</div>
+<script>
+(function () {
+  var card = document.getElementById('card'), img = document.getElementById('img'), live = document.getElementById('live');
+  var SHARE = { s: 0.16, m: 0.21, l: 0.27 };   // card width as a share of the screen, as on the Hisense
+  var shown = null, snapTimer = null, misses = 0, started = Date.now();
+  function fmt(t) { return new Date(t).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); }
+  function place(corner, size) {
+    var W = window.innerWidth || 1920, total = 400 + 30 + 3;   // width + padding + border
+    var k = W * (SHARE[size] || SHARE.m) / total, m = Math.round(48 * W / 1920) + 'px', c = corner || 'br';
+    card.style.top = card.style.bottom = card.style.left = card.style.right = '';
+    card.style[c.charAt(0) === 't' ? 'top' : 'bottom'] = m;
+    card.style[c.charAt(1) === 'l' ? 'left' : 'right'] = m;
+    card.style.transformOrigin = (c.charAt(0) === 't' ? 'top ' : 'bottom ') + (c.charAt(1) === 'l' ? 'left' : 'right');
+    card.style.transform = 'scale(' + k.toFixed(4) + ')';
+  }
+  function refresh() {
+    var n = new Image();
+    n.onload = function () { img.src = n.src; live.style.visibility = 'visible'; };
+    n.src = '/api/home/doorsnap?t=' + Date.now();
+  }
+  function finish() {
+    clearInterval(snapTimer);
+    card.className = '';
+    setTimeout(function () { window.close(); }, 400);
+  }
+  function tick() {
+    var x = new XMLHttpRequest();
+    x.open('GET', '/api/home/door');
+    x.timeout = 3000;
+    x.onload = function () {
+      var s = null;
+      try { s = JSON.parse(x.responseText); } catch (e) { /* treat as none */ }
+      if (s && s.until && s.over) {
+        misses = 0;
+        document.getElementById('cam').textContent = s.camera || '';
+        if (s.at !== shown) {
+          shown = s.at;
+          place(s.corner, s.size);
+          document.getElementById('title').textContent = s.label;
+          document.getElementById('time').textContent = fmt(s.at);
+          document.getElementById('nopic').style.display = s.snap ? 'none' : 'flex';
+          live.style.visibility = 'hidden';
+          img.removeAttribute('src');
+          card.className = 'on';
+          clearInterval(snapTimer);
+          if (s.snap) { refresh(); snapTimer = setInterval(refresh, 1000); }
+        }
+      } else if (shown || Date.now() - started > 4000) {
+        finish();
+      }
+    };
+    x.onerror = x.ontimeout = function () { if (++misses > 5) finish(); };
+    x.send();
+  }
+  tick();
+  setInterval(tick, 1000);
+  document.addEventListener('webOSRelaunch', function () { tick(); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "id": "com.canvasframe.home",
+  "version": "1.33.0",
+  "vendor": "CanvasFrame",
+  "type": "web",
+  "main": "index.html",
+  "title": "CanvasFrame",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "iconColor": "#1e1b18",
+  "bgColor": "#1e1b18",
+  "resolution": "1920x1080",
+  "disableBackHistoryAPI": true,
+  "handlesRelaunch": true
+}

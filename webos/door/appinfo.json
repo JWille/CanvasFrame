@@ -1,0 +1,18 @@
+{
+  "id": "com.canvasframe.door",
+  "version": "1.0.0",
+  "vendor": "CanvasFrame",
+  "type": "web",
+  "main": "index.html",
+  "title": "CanvasFrame Doorbell",
+  "icon": "icon.png",
+  "resolution": "1920x1080",
+  "defaultWindowType": "overlay",
+  "transparent": true,
+  "visible": false,
+  "enableKeyboard": false,
+  "noSplashOnLaunch": true,
+  "spinnerOnLaunch": false,
+  "disableBackHistoryAPI": true,
+  "handlesRelaunch": true
+}

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CanvasFrame</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1e1b18; color: #f6f1ea; overflow: hidden; cursor: none;
+    font-family: "LG Smart UI", "Museo Sans", sans-serif; }
+  body { display: flex; align-items: center; justify-content: center; flex-direction: column;
+    background: linear-gradient(135deg, #1e1b18, #3a3129 55%, #5e4e3d); }
+  .t { font-family: "Museo Sans"; font-weight: 100; font-size: 64px; }
+  .s { font-size: 24px; color: rgba(246,241,234,.62); margin-top: 18px; min-height: 30px; }
+</style>
+</head>
+<body>
+<div class="t">CanvasFrame</div>
+<div class="s" id="s">Starting…</div>
+<script>
+/*
+ * Wrapper app: the home screen itself is served by the CanvasFrame server on the TV (started at boot by
+ * /var/lib/webosbrew/init.d/60-canvasframe). Wait here until it answers, then open it. Ports are tried in
+ * order so the app keeps working when the server moves from 8081 to 8080.
+ */
+var PORTS = [8080, 8081], tries = 0;
+function probe(i) {
+  var port = PORTS[i], x = new XMLHttpRequest();
+  x.open('GET', 'http://127.0.0.1:' + port + '/api/home/ver');
+  x.timeout = 1500;
+  x.onload = function () {
+    var ok = false;
+    try { ok = x.status === 200 && 'version' in JSON.parse(x.responseText); } catch (e) { /* not ours */ }
+    if (ok) location.replace('http://127.0.0.1:' + port + '/home');
+    else next(i);
+  };
+  x.onerror = x.ontimeout = function () { next(i); };
+  x.send();
+}
+function next(i) {
+  if (i + 1 < PORTS.length) return probe(i + 1);
+  tries++;
+  if (tries > 3) document.getElementById('s').textContent = 'Waiting for the CanvasFrame service…';
+  setTimeout(function () { probe(0); }, 1000);
+}
+probe(0);
+</script>
+</body>
+</html>
