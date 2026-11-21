@@ -5,7 +5,7 @@
 <h1 align="center">CanvasFrame</h1>
 
 <p align="center">
-  <b>A calm home screen, a web dashboard and a whole-house mesh for the TVs you already own.</b><br>
+  <b>A clean home screen and web dashboard that link the TVs you already own into a local mesh.</b><br>
   Google TV / Android TV (no root) · rooted LG webOS · a Windows companion app
 </p>
 
@@ -25,7 +25,7 @@ There is no cloud account and no server to keep running. Everything stays on you
 | A Google TV or Android TV (Hisense, Valerion, others) | [Install on Google TV / Android TV](#install-on-google-tv--android-tv) |
 | An LG TV that is already rooted (Homebrew Channel) | [Install on a rooted LG](#install-on-a-rooted-lg-webos) |
 | A Windows PC that uses a TV as its monitor | [CanvasFrame Link for Windows](#canvasframe-link-for-windows) |
-| A UniFi Protect doorbell | [Doorbell alerts](#doorbell-alerts-unifi-protect) |
+| UniFi Protect cameras (a doorbell, for example) | [UniFi Protect alerts](#unifi-protect-alerts) |
 | Home Assistant, or plans for it | [Home Assistant and the API](#home-assistant-and-the-api) |
 | A question about how the TVs work together | [The whole-house picture](#the-whole-house-picture) |
 | A quick look at what the dashboard can do | [A tour of the dashboard](#a-tour-of-the-dashboard) |
@@ -195,7 +195,7 @@ apps. Each section folds up to a one-line summary, so you can see the whole setu
 <summary><b>Sync: the whole house</b></summary>
 
 The TVs, their rooms and what each is doing, rooms and which rooms are next to each other, screen savers together,
-photo consistency across TVs, storage per TV, linked TVs, and the doorbell. Covered in
+photo consistency across TVs, storage per TV, linked TVs, and UniFi Protect alerts. Covered in
 [The whole-house picture](#the-whole-house-picture).
 </details>
 
@@ -212,7 +212,7 @@ flowchart LR
     subgraph LIV["Living Room"]
         FR["LG<br/>Front Room"]
     end
-    subgraph DSK["Desk"]
+    subgraph GAME["Game Room"]
         HS["Hisense<br/>PC monitor"]
         PB["LG OLED<br/>Pinball"]
     end
@@ -235,7 +235,7 @@ flowchart LR
 | Photos, their tags, and deletions | Its TV, privacy and network settings |
 | Home-screen settings (weather, clock, timings, theme) and calendars | Its screen saver choice and how much it dims |
 | Sign-in authenticators, and "sign in once" for every TV | Its API keys |
-| The doorbell setup | Which doorbell alerts it shows, and where |
+| The UniFi Protect setup | Which Protect alerts it shows, and where |
 | Live state: what each TV is showing, its backlight, room light | |
 
 **How it stays in sync.** A change made on any TV's dashboard is pushed to the others within a second or two. Every TV
@@ -245,7 +245,7 @@ Deletions are remembered for a week, so a deleted photo stays deleted.
 
 **What that makes possible:**
 
-![The Sync tab: TVs with their rooms and state, screen savers together, rooms](docs/images/dashboard-sync.jpg)
+![The Sync tab: Rooms first (Game Room next to Living Room), then the TVs placed in them with their live state, then screen savers together](docs/images/dashboard-sync.jpg)
 
 - **"Your CanvasFrame TVs"**: a live wall on every dashboard showing what each TV is showing right now, dimmed like its
   screen. Tap one to open its dashboard, already signed in.
@@ -305,14 +305,15 @@ The same idea runs through the rest of the mesh:
 This is the groundwork for Home Assistant: the TVs already hold a shared, room-aware picture of the house, which a hub
 can read and steer.
 
-## Doorbell alerts (UniFi Protect)
+## UniFi Protect alerts
 
 | | |
 |---|---|
 | ![A doorbell alert centred on an LG's home screen: gold bell, "Doorbell Ringing", the camera name, the time, a LIVE badge and the porch camera's picture](docs/images/doorbell-card.jpg) | ![The compact doorbell card in the top-right corner over another app on a Hisense](docs/images/doorbell-corner.jpg) |
 | *Over CanvasFrame's own screens: large and centred.* | *Over any other app or input: a compact card in the corner you choose.* |
 
-When someone rings, CanvasFrame shows a card with the camera's picture on your TVs:
+When Protect sends an alert (someone rings, a person or a package at the door, motion), CanvasFrame shows a card with
+the camera's picture on your TVs:
 
 - **Centred** over the CanvasFrame home screen or screen saver.
 - **Small, in a corner** over anything else: the PC, live TV, Netflix. On LG, a tiny overlay app draws the card and the
@@ -322,12 +323,14 @@ The card shows the alert (*Doorbell Ringing*, *Person at the Door*, *Package Del
 camera's name, the time, and a LIVE badge once the picture is moving. The Hisense plays the camera's live stream. The LGs
 show a snapshot that refreshes about once a second.
 
-**Setup**, on any TV's dashboard (Sync tab, Doorbell card):
+**Setup**, on any TV's dashboard (Sync tab, UniFi Protect card):
 
 1. Enter your Protect console's address and an API key (UniFi OS → Settings → Control Plane → Integrations).
-2. Optionally paste the camera's RTSP addresses, for live video.
-3. In Protect: **Alarm Manager → Create alarm**. Pick a trigger (doorbell ring, person, package or motion), choose the
-   action **Webhook**, and paste the address the card gives you for that alert.
+2. Define your alerts. Each one has a name (the title your TVs show), a camera (for the snapshot and its name), an
+   optional RTSP stream for live video, and its own webhook address. A doorbell's ring, person, package and motion alerts
+   are there to start with; add one for any other camera or sensor.
+3. In Protect: **Alarm Manager → Create alarm**. Pick a trigger and camera, choose the action **Webhook**, and paste
+   that alert's address.
 
 Any TV can receive the webhook and it tells the rest. Each TV chooses which alerts it shows, which corner, what size, and
 how long the card stays (5 seconds over your PC works well).

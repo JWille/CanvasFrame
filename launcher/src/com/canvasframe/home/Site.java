@@ -61,8 +61,8 @@ final class Site {
     }
 
     private static final long CMD_TTL = 2 * 60_000L, TOMBSTONE_TTL = 7 * 86_400_000L, FRESH = 3 * 60_000L;
-    private static final Pattern KEY = Pattern.compile("^(dev|env|act|pics|place|room|opt|auth|sso|photo|tag|set|cmd):[A-Za-z0-9_-]{1,40}$");
-    private static final Pattern EDITABLE = Pattern.compile("^(place|room|opt):[A-Za-z0-9_-]{1,40}$");
+    private static final Pattern KEY = Pattern.compile("^(dev|env|act|pics|sig|scan|sensor|place|room|opt|auth|sso|photo|tag|set|cmd):[A-Za-z0-9_-]{1,40}$");
+    private static final Pattern EDITABLE = Pattern.compile("^(place|room|opt|sensor):[A-Za-z0-9_-]{1,40}$");
 
     private static JSONObject items;                 // guarded by Site.class
     private static final Set<String> done = new HashSet<>();
@@ -143,7 +143,7 @@ final class Site {
             JSONObject it = in.optJSONObject(k);
             if (it == null || !it.has("t") || !KEY.matcher(k).matches()) continue;
             if ((k.startsWith("auth:") || k.startsWith("sso:") || k.equals("set:cal") || k.equals("set:door")) && !trusted) continue;
-            if ((k.startsWith("dev:") || k.startsWith("env:") || k.startsWith("act:") || k.startsWith("pics:"))
+            if ((k.startsWith("dev:") || k.startsWith("env:") || k.startsWith("act:") || k.startsWith("pics:") || k.startsWith("sig:") || k.startsWith("scan:"))
                     && k.substring(k.indexOf(':') + 1).equals(me)) continue;
             if (newer(it, items(c).optJSONObject(k))) {
                 JSONObject id0 = it.optJSONObject("d");
@@ -194,8 +194,19 @@ final class Site {
             }
             if (k.equals("set:door") && it.optJSONObject("d") != null) {   // doorbell: API key, stream tokens, webhook token are TV-to-TV only
                 JSONObject d = it.optJSONObject("d");
-                it = new JSONObject(it.toString()).put("d", new JSONObject().put("console", d.optString("console"))
-                        .put("apiKey", !d.optString("apiKey").isEmpty()).put("live", !d.optString("live").isEmpty()).put("pkg", !d.optString("pkg").isEmpty()));
+                JSONObject bd = new JSONObject().put("console", d.optString("console"))
+                        .put("apiKey", !d.optString("apiKey").isEmpty()).put("live", !d.optString("live").isEmpty()).put("pkg", !d.optString("pkg").isEmpty());
+                JSONArray al = d.optJSONArray("alerts");   // the user's alerts, without their stream tokens
+                if (al != null) {
+                    JSONArray safe = new JSONArray();
+                    for (int i = 0; i < al.length(); i++) {
+                        JSONObject a = al.optJSONObject(i);
+                        if (a != null) safe.put(new JSONObject().put("id", a.optString("id")).put("name", a.optString("name"))
+                                .put("camera", a.optString("camera")).put("quiet", a.optBoolean("quiet")).put("stream", !a.optString("stream").isEmpty()));
+                    }
+                    bd.put("alerts", safe);
+                }
+                it = new JSONObject(it.toString()).put("d", bd);
             }
             if (k.startsWith("sso:")) {   // the mesh's sign-in pass secret: TV-to-TV only
                 JSONObject d = it.optJSONObject("d");
@@ -282,6 +293,13 @@ final class Site {
             String k = del.getString(i);
             if (!EDITABLE.matcher(k).matches()) throw new IllegalArgumentException("That item can only be changed by its own TV");
             put(c, k, null, true);
+        }
+        // "Find sensors" from a dashboard: every TV that can scan listens for a while; all TVs sync faster meanwhile.
+        if (body.has("blescan")) {
+            long until = System.currentTimeMillis() + Math.max(10, Math.min(120, body.optInt("blescan", 45))) * 1000L;
+            String cid = Long.toString(System.currentTimeMillis(), 36) + Integer.toHexString(new java.util.Random().nextInt(0xffff));
+            put(c, "cmd:" + cid, new JSONObject().put("action", "blescan").put("until", until).put("target", "all").put("from", id(c)), false);
+            fast(until);
         }
         // Activity reported from outside (later Home Assistant motion; for now the API): this TV's room counts as in use.
         String act = body.optString("activity", "");
@@ -815,6 +833,26 @@ final class Site {
 
     /** After a local edit: replicate right away (in the background). */
     static void now(Context c) { NOW.execute(() -> round(c)); }
+
+    static volatile long fastUntil;
+
+    /** Sync every few seconds until `until` (a sensor search: other TVs' scan results arrive quickly). */
+    static void fast(long until) { if (until > fastUntil) fastUntil = until; }
+
+    /** Called every 3 s: a round while a sensor search runs. */
+    static void fastTick(Context c) { if (System.currentTimeMillis() < fastUntil) round(c); }
+
+    /** This TV's signals (Signals.java): sig:<id> {list:[...]}, only written when they changed; push = tell the others now. */
+    static void signals(Context c, JSONArray list, boolean push) {
+        try {
+            JSONObject d = new JSONObject().put("list", list);
+            JSONObject cur;
+            synchronized (Site.class) { cur = items(c).optJSONObject("sig:" + id(c)); }
+            if (cur != null && String.valueOf(cur.opt("d")).equals(d.toString())) return;
+            put(c, "sig:" + id(c), d, false);
+            if (push) now(c);
+        } catch (JSONException ignored) { }
+    }
 
     /** Every 15 s from DashboardService. */
     static void tick(Context c, JSONObject identity, Hooks h) {

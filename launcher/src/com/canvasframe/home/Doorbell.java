@@ -34,10 +34,13 @@ import javax.net.ssl.HttpsURLConnection;
  * UniFi Protect doorbell on the TV (same as webos/server/lib/doorbell.js).
  *
  * Setup is shared by the TVs as the site item set:door {console, fp (its certificate, recorded on first contact), apiKey
- * (Protect integration API), live / pkg (RTSP stream tokens: main camera medium quality, package camera), hook (webhook token)};
- * it only travels TV-to-TV, browsers see whether things are set. Per TV (prefs): door_show, door_over (also over inputs/apps).
+ * (Protect integration API), hook (webhook token), alerts [{id, name, camera, stream, quiet}] (user-defined: name = the card's
+ * title, camera = Protect camera id for snapshots and its name, stream = RTSP token for live video, quiet = repeats often,
+ * so it never replaces an alert that's up and waits 30 s), plus the older live / pkg stream tokens (fallbacks; with no
+ * alerts saved the four defaults ring / person / package / motion apply). It only travels TV-to-TV, browsers see what's
+ * set. Per TV (prefs): door_show, door_over (also over inputs/apps), door_hide (alert ids not shown here).
  *
- * Protect's Alarm Manager calls http(s)://<any TV>/api/doorbell/hook/<hook>?kind=ring|person|package (POST or GET, no
+ * Protect's Alarm Manager calls http(s)://<any TV>/api/doorbell/hook/<hook>?kind=<alert id> (POST or GET, no
  * X-CanvasFrame header needed). That TV shows the alert and sends a site command "doorbell" so the others do (~1-2 s).
  * On screen: a panel with live video (Android's player, plain RTSP on port 7447), falling back to snapshots from the
  * integration API once a second; centred over CanvasFrame / CanvasArt, or small in a corner over an input or app. 45 s.
@@ -57,13 +60,56 @@ final class Doorbell {
     private static String cameraId;
     private static volatile String cameraName;
 
-    static final String KINDS = "door_kinds";   // which alerts this TV shows (comma list); all by default
+    static final String KINDS = "door_kinds";   // before 3.39: which of the four fixed alerts this TV showed
+    static final String HIDE = "door_hide";     // alert ids this TV doesn't show (comma list); new alerts show everywhere
     static final String ALL_KINDS = "ring,person,package,motion";
     private static final String RECENT = "door_recent";   // kept in prefs so an update or restart doesn't lose them
 
-    static boolean wants(Context c, String kind) {
-        return ("," + Config.prefs(c).getString(KINDS, ALL_KINDS) + ",").contains("," + kind + ",");
+    /** The alerts: the saved list, or the four defaults (ids match the older ?kind= webhook addresses). */
+    static JSONArray alerts(JSONObject door) {
+        JSONArray a = door == null ? null : door.optJSONArray("alerts");
+        if (a != null && a.length() > 0) return a;
+        a = new JSONArray();
+        try {
+            a.put(new JSONObject().put("id", "ring").put("name", "Doorbell Ringing"));
+            a.put(new JSONObject().put("id", "person").put("name", "Person at the Door"));
+            a.put(new JSONObject().put("id", "package").put("name", "Package Delivered"));
+            a.put(new JSONObject().put("id", "motion").put("name", "Motion at the Door").put("quiet", true));
+        } catch (JSONException ignored) { }
+        return a;
     }
+
+    /** The alert with this id; an unknown id still shows, under a plain title. */
+    static JSONObject alert(JSONObject door, String id) {
+        JSONArray a = alerts(door);
+        for (int i = 0; i < a.length(); i++) if (id.equals(a.optJSONObject(i).optString("id"))) return a.optJSONObject(i);
+        try { return new JSONObject().put("id", id).put("name", "UniFi Protect alert"); } catch (JSONException e) { return new JSONObject(); }
+    }
+
+    /** RTSP token for an alert's live video: its own stream; the four original alerts fall back to the older package / main
+     *  stream (an alert of the user's own never borrows another camera's video). */
+    static String stream(JSONObject door, JSONObject a) {
+        String s = a.optString("stream"), id = a.optString("id");
+        if (!s.isEmpty()) return s;
+        if (a.optBoolean("noStream")) return "";
+        if (!("," + ALL_KINDS + ",").contains("," + id + ",")) return "";
+        if ("package".equals(id) && !door.optString("pkg").isEmpty()) return door.optString("pkg");
+        return door.optString("live");
+    }
+
+    /** Alert ids hidden on this TV (moved over from the older "shown" list once). */
+    static String hidden(Context c) {
+        SharedPreferences p = Config.prefs(c);
+        String h = p.getString(HIDE, null);
+        if (h != null) return h;
+        String shown = "," + p.getString(KINDS, ALL_KINDS) + ",";
+        StringBuilder sb = new StringBuilder();
+        for (String k : ALL_KINDS.split(",")) if (!shown.contains("," + k + ",")) sb.append(sb.length() > 0 ? "," : "").append(k);
+        p.edit().putString(HIDE, sb.toString()).apply();
+        return sb.toString();
+    }
+
+    static boolean wants(Context c, String kind) { return !("," + hidden(c) + ",").contains("," + kind + ","); }
 
     static JSONObject recent(Context c) throws JSONException {
         JSONArray a = new JSONArray();
@@ -79,16 +125,17 @@ final class Doorbell {
         return new JSONObject().put("events", a);
     }
 
-    /** A call to the webhook (already checked against the token). kind from ?kind= or guessed from the body. */
-    static String kindOf(String query, String body) {
+    /** A call to the webhook (already checked against the token): the alert id from ?kind=, or guessed from the body. */
+    static String kindOf(JSONObject door, String query, String body) {
         String q = query == null ? "" : query, b = body == null ? "" : body.toLowerCase(java.util.Locale.ROOT);
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?:^|&)kind=([a-z]+)").matcher(q);
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?:^|&)kind=([A-Za-z0-9_-]{1,24})").matcher(q);
         if (m.find()) return m.group(1);
-        if (b.contains("package")) return "package";
-        if (b.contains("ring")) return "ring";
-        if (b.contains("person") || b.contains("human")) return "person";
-        if (b.contains("motion")) return "motion";
-        return "ring";
+        JSONArray a = alerts(door);
+        for (String k : new String[]{"package", "ring", "person", "motion"}) {   // older guesses, if those alerts exist
+            if (b.contains(k) || ("person".equals(k) && b.contains("human")))
+                for (int i = 0; i < a.length(); i++) if (k.equals(a.optJSONObject(i).optString("id"))) return k;
+        }
+        return a.length() > 0 ? a.optJSONObject(0).optString("id") : "ring";
     }
 
     static void remember(Context c, String kind, String from, String body) {
@@ -107,24 +154,16 @@ final class Doorbell {
         android.util.Log.e("CanvasFrame", "doorbell webhook: " + kind + " from " + from);
     }
 
-    static String label(String kind) {
-        switch (kind) {
-            case "person": return "Someone's at the door";
-            case "package": return "A package was delivered";
-            case "motion": return "Motion at the door";
-            default: return "Doorbell";
-        }
-    }
-
     /** Shows the alert on this TV if it's switched on here. event: an id so the same alert isn't shown twice. */
     static void show(Context ctx, String kind, String event, JSONObject door, boolean overSomething) {
         SharedPreferences p = Config.prefs(ctx);
         if (!p.getBoolean(SHOW, false) || door == null || !wants(ctx, kind)) return;
+        JSONObject a = alert(door, kind);
         long now = System.currentTimeMillis();
         synchronized (Doorbell.class) {
             if (event.equals(lastEvent) || now - lastAt < 8000 && "".equals(event)) return;
-            // Motion fires again and again while someone waits: it never replaces an alert that's up, nor repeats within 30 s.
-            if ("motion".equals(kind) && !event.startsWith("test") && (panel != null || now - lastAt < 30000)) return;
+            // Quiet alerts (motion) fire again and again: they never replace an alert that's up, nor repeat within 30 s.
+            if (a.optBoolean("quiet") && !event.startsWith("test") && (panel != null || now - lastAt < 30000)) return;
             lastEvent = event; lastAt = now;
         }
         if (overSomething && !p.getBoolean(OVER, false)) return;
@@ -132,22 +171,12 @@ final class Doorbell {
         long ms = 1000L * Math.max(5, overSomething ? p.getInt(SECS_OVER, 15) : p.getInt(SECS, 45));
         if (!overSomething) ArtDream.brightFor(ms);   // CanvasArt's dimming steps aside while the picture is up
         String corner = p.getString(CORNER, "br"), size = p.getString(SIZE, "m");
-        MAIN.post(() -> open(c, kind, door, !overSomething, ms, corner, size));
-    }
-
-    /** Title for the alert (the panel's first line). */
-    static String title(String kind) {
-        switch (kind) {
-            case "person": return "Person at the Door";
-            case "package": return "Package Delivered";
-            case "motion": return "Motion at the Door";
-            default: return "Doorbell Ringing";
-        }
+        MAIN.post(() -> open(c, a, door, !overSomething, ms, corner, size));
     }
 
     private static TextView subtitle;
     private static View livePill;
-    private static String kindShown = "";
+    private static JSONObject alertShown = new JSONObject();
 
     /** Width of the corner card (share of the screen) for door_size. */
     static float cornerWidth(String size) {
@@ -158,7 +187,7 @@ final class Doorbell {
         }
     }
 
-    private static void open(Context c, String kind, JSONObject door, boolean centred, long showMs, String corner, String size) {
+    private static void open(Context c, JSONObject alert, JSONObject door, boolean centred, long showMs, String corner, String size) {
         close(c);
         try {
             WindowManager wm = c.getSystemService(WindowManager.class);
@@ -191,14 +220,14 @@ final class Doorbell {
             names.setOrientation(LinearLayout.VERTICAL);
             names.setPadding(Math.round(14 * k * dp), 0, Math.round(8 * k * dp), 0);
             TextView t1 = new TextView(c);
-            t1.setText(title(kind));
+            t1.setText(alert.optString("name", "UniFi Protect alert"));
             t1.setTextColor(0xFFF4F5F7);
             t1.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 21 * k * dp);
             t1.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
             t1.setSingleLine(true);
             names.addView(t1);
             TextView t2 = new TextView(c);
-            t2.setText(cameraLabel(kind));
+            t2.setText(cameraLabel(alert));
             t2.setTextColor(0xFF9CA0AA);
             t2.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, 15 * k * dp);
             t2.setSingleLine(true);
@@ -259,13 +288,13 @@ final class Doorbell {
             ImageView img = new ImageView(c);
             img.setScaleType(ImageView.ScaleType.CENTER_CROP);
             media.addView(img, new FrameLayout.LayoutParams(mw, mh));
-            subtitle = t2; livePill = pill; kindShown = kind;
+            subtitle = t2; livePill = pill; alertShown = alert;
 
             // The snapshot first (straight away, refreshed about once a second), then live video over it once its first
             // frame is drawn. The video goes into a TextureView (drawn into this window): a VideoView uses a hardware video
             // layer, which stays black over an HDMI input (seen 2026-11-20).
-            snapshots(c, door, img, card);
-            String token = "package".equals(kind) && !door.optString("pkg").isEmpty() ? door.optString("pkg") : door.optString("live");
+            snapshots(c, door, alert.optString("camera"), img, card);
+            String token = stream(door, alert);
             if (!token.isEmpty()) {
                 android.view.TextureView tv = new android.view.TextureView(c);
                 tv.setAlpha(0f);
@@ -325,12 +354,14 @@ final class Doorbell {
 
     private static void showLive() { if (livePill != null) livePill.setVisibility(View.VISIBLE); }
 
-    private static void refreshName() { if (subtitle != null) subtitle.setText(cameraLabel(kindShown)); }
+    private static void refreshName() { if (subtitle != null) subtitle.setText(cameraLabel(alertShown)); }
 
-    /** The panel's second line: the doorbell camera's name from Protect (once known), or a plain fallback. */
-    static String cameraLabel(String kind) {
-        String n = cameraName != null && !cameraName.isEmpty() ? cameraName : "Front Door Camera";
-        return "package".equals(kind) ? n + " · package camera" : n;
+    /** The panel's second line: the alert's camera name from Protect (once known), or the doorbell camera's, or a fallback. */
+    static String cameraLabel(JSONObject a) {
+        String id = a.optString("camera");
+        String n = !id.isEmpty() && camNames.containsKey(id) ? camNames.get(id)
+                : cameraName != null && !cameraName.isEmpty() ? cameraName : "Front Door Camera";
+        return "package".equals(a.optString("id")) && id.isEmpty() ? n + " · package camera" : n;
     }
 
     static void close(Context c) {
@@ -342,14 +373,14 @@ final class Doorbell {
     }
 
     /** Snapshots from Protect's integration API, about once a second, while the panel is up. */
-    private static void snapshots(Context c, JSONObject door, ImageView img, View owner) {
+    private static void snapshots(Context c, JSONObject door, String camId, ImageView img, View owner) {
         if (door.optString("apiKey").isEmpty()) return;
         snapping = true;
         final View mine = owner;
         new Thread(() -> {
             while (snapping && (panel == mine || panel == null)) {
                 try {
-                    byte[] jpg = snapshot(door);
+                    byte[] jpg = snapshot(door, camId);
                     Bitmap b = BitmapFactory.decodeByteArray(jpg, 0, jpg.length);
                     if (b != null) MAIN.post(() -> { img.setImageBitmap(b); showLive(); refreshName(); });
                 } catch (Exception e) {
@@ -380,13 +411,29 @@ final class Doorbell {
         }
     }
 
-    /** The doorbell's camera id (the first camera whose name or model says doorbell, else the first). */
+    private static final java.util.Map<String, String> camNames = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /** Protect's cameras [{id, name, model}] (also remembers their names for the card). */
+    static JSONArray cameras(JSONObject door) throws Exception {
+        JSONArray cams = new JSONArray(new String(protect(door, "/proxy/protect/integration/v1/cameras"), "UTF-8"));
+        JSONArray out = new JSONArray();
+        for (int i = 0; i < cams.length(); i++) {
+            JSONObject cam = cams.getJSONObject(i);
+            camNames.put(cam.optString("id"), cam.optString("name"));
+            out.put(new JSONObject().put("id", cam.optString("id")).put("name", cam.optString("name"))
+                    .put("model", cam.optString("modelKey").isEmpty() ? cam.optString("type") : cam.optString("modelKey")));
+        }
+        return out;
+    }
+
+    /** The default camera id (the first camera whose name or model says doorbell, else the first). */
     static synchronized String camera(JSONObject door) throws Exception {
         if (cameraId != null) return cameraId;
         JSONArray cams = new JSONArray(new String(protect(door, "/proxy/protect/integration/v1/cameras"), "UTF-8"));
         String first = null;
         for (int i = 0; i < cams.length(); i++) {
             JSONObject cam = cams.getJSONObject(i);
+            camNames.put(cam.optString("id"), cam.optString("name"));
             if (first == null) { first = cam.optString("id"); cameraName = cam.optString("name"); }
             if ((cam.optString("name") + " " + cam.optString("modelKey") + " " + cam.optString("type")).toLowerCase(java.util.Locale.ROOT).contains("doorbell")) {
                 cameraName = cam.optString("name");
@@ -396,8 +443,10 @@ final class Doorbell {
         return cameraId = first;
     }
 
-    static byte[] snapshot(JSONObject door) throws Exception {
-        return protect(door, "/proxy/protect/integration/v1/cameras/" + camera(door) + "/snapshot");
+    /** A snapshot from the alert's camera (camId), or the default camera when it has none. */
+    static byte[] snapshot(JSONObject door, String camId) throws Exception {
+        String id = camId == null || camId.isEmpty() ? camera(door) : camId;
+        return protect(door, "/proxy/protect/integration/v1/cameras/" + id + "/snapshot");
     }
 
     static void forgetCamera() { synchronized (Doorbell.class) { cameraId = null; } }

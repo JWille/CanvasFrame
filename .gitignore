@@ -21,3 +21,6 @@ pc/bin/
 
 # Local secrets (TOTP for Claude, etc.): never commit
 .secrets/
+
+# Dashboard check (tools/dash-check)
+node_modules/

@@ -73,6 +73,12 @@ const SECTIONS = [
     ...[1, 2, 3, 4].map(n => choice('sound', 'inputAudioFormatHDMI' + n, `Audio format · HDMI ${n}`, 'Bitstream passes Dolby/DTS through; PCM decodes on the device.',
       [C('bitstream', 'Bitstream'), C('pcm', 'PCM')])),
   ] },
+  { id: 'remote', title: 'Magic Remote', rows: [
+    choice('option', 'pointerSpeed', 'Pointer speed', 'How fast the pointer follows the remote.', [C('slow', 'Slow'), C('normal', 'Normal'), C('fast', 'Fast')]),
+    choice('option', 'pointerSize', 'Pointer size', 'How big the pointer is.', [C('small', 'Small'), C('medium', 'Medium'), C('large', 'Large')]),
+    sw('option', 'pointerAlignment', 'Pointer alignment', 'Shake the remote to put the pointer back in the middle of the screen.'),
+    sw('other', 'cursorAutoRemover', 'Hide the pointer when idle', 'The pointer disappears after a few seconds without movement.'),
+  ] },
   { id: 'devices', title: 'Connected devices', rows: [
     sw('other', 'simplinkEnable', 'HDMI-CEC (SIMPLINK)', 'Control connected HDMI devices with the TV remote.'),
     sw('other', 'simplinkAutoPowerOn', 'Auto power sync', 'Turns connected devices on and off with the TV.'),

@@ -6,6 +6,12 @@ $bt    = "$sdk\build-tools\35.0.0"
 $jar   = "$sdk\platforms\android-31\android.jar"
 $out   = "$here\build"
 
+# Gate: the dashboard's (and LG pages') scripts must parse; one stray quote blanks the whole dashboard.
+if (Get-Command node -ErrorAction SilentlyContinue) {
+    node (Join-Path $here '..\tools\dash-check\dash-check.mjs') --static
+    if ($LASTEXITCODE) { throw 'dashboard script check failed (see above)' }
+} else { Write-Warning 'node not found: dashboard script check skipped' }
+
 Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force "$out\res","$out\classes","$out\dex" | Out-Null
 

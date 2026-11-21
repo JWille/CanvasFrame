@@ -93,6 +93,7 @@ public class DashboardService extends Service {
     }
 
     private AdbClient adb;
+    private Radar radar;
     private ServerSocket server;
     private volatile ServerSocket tlsServer;
     /** True once the HTTPS server is listening; until then plain HTTP keeps working for the LAN. */
@@ -122,6 +123,29 @@ public class DashboardService extends Service {
                 pool.execute(() -> Site.activity(DashboardService.this, kind));
             }
         }, af);
+        // Presence from the Hisense art-mode radar (Radar.java), also while the PC input is on.
+        radar = new Radar(this, this::shellOrNull);
+        radar.start();
+        // Integrations feed signals (Signals.java: sig:<id> in the site); RoomLog turns every TV's signals into history.
+        Signals.register("radar", c -> {
+            JSONArray a = new JSONArray();
+            if ("someone".equals(Radar.state) || "nobody".equals(Radar.state))
+                a.put(new JSONObject().put("key", "radar/" + Site.id(c)).put("name", deviceName(c) + " radar").put("kind", "Presence radar")
+                        .put("presence", Radar.state).put("since", Radar.since).put("at", Radar.lastReport));
+            return a;
+        });
+        Signals.register("lightsensor", c -> {
+            JSONArray a = new JSONArray();
+            if (RoomLight.ownLight >= 0 && System.currentTimeMillis() - RoomLight.ownAt < 180_000)
+                a.put(new JSONObject().put("key", "light/" + Site.id(c)).put("name", deviceName(c) + " light sensor").put("kind", "TV light sensor")
+                        .put("light", Math.min(100, RoomLight.ownLight * 5)).put("at", RoomLight.ownAt));
+            return a;
+        });
+        weatherTimer.scheduleWithFixedDelay(() -> {
+            try { Signals.publish(this, false); } catch (Exception ignored) { }
+            RoomLog.tick(this);
+        }, 20, 30, java.util.concurrent.TimeUnit.SECONDS);
+        fastTimer.scheduleWithFixedDelay(() -> { try { Site.fastTick(this); } catch (Exception ignored) { } }, 10, 3, java.util.concurrent.TimeUnit.SECONDS);
         // The shared site (Site.java): identity, rooms and live state of every TV, replicated over the Sync peers.
         weatherTimer.scheduleWithFixedDelay(this::siteTick, 5, 15, java.util.concurrent.TimeUnit.SECONDS);
         weatherTimer.scheduleWithFixedDelay(() -> {
@@ -136,11 +160,13 @@ public class DashboardService extends Service {
     @Override
     public void onDestroy() {
         running = false;
+        if (radar != null) radar.stop();
         try { if (server != null) server.close(); } catch (IOException ignored) { }
         try { if (tlsServer != null) tlsServer.close(); } catch (IOException ignored) { }
         adb.close();
         pool.shutdownNow();
         weatherTimer.shutdownNow();
+        fastTimer.shutdownNow();
         super.onDestroy();
     }
 
@@ -417,6 +443,16 @@ public class DashboardService extends Service {
                 case "GET /api/doorbell":  res = doorStatus(); break;
                 case "POST /api/doorbell": res = doorSet(req); break;
                 case "POST /api/doorbell/test": res = doorTest(req); break;
+                case "GET /api/rooms": res = RoomLog.get(this); break;
+                case "POST /api/signals": res = Signals.post(this, req, "api"); break;   // from outside: Home Assistant, scripts, sensors
+                case "GET /api/integrations": res = new JSONObject().put("integrations", integrations()); break;
+                case "POST /api/integrations": res = integrationSet(req); break;
+                case "GET /api/doorbell/cameras": {   // Protect's cameras, for the alert editor's camera picker
+                    JSONObject d = Site.door(this);
+                    if (d == null || d.optString("apiKey").isEmpty()) throw new IllegalArgumentException("Add a Protect API key first");
+                    res = new JSONObject().put("cameras", Doorbell.cameras(d));
+                    break;
+                }
                 case "GET /api/pc":       res = pcStatus(); break;
                 case "POST /api/pc":      res = req.has("event") ? pcEvent(req) : pcSet(req); break;
                 case "POST /api/art":     res = startUi(new Intent(Intent.ACTION_MAIN)
@@ -838,7 +874,7 @@ public class DashboardService extends Service {
         JSONObject door = Site.door(this);
         if (door == null || door.optString("hook").isEmpty()
                 || !java.security.MessageDigest.isEqual(door.optString("hook").getBytes(StandardCharsets.UTF_8), hook.getBytes(StandardCharsets.UTF_8))) return null;
-        String kind = Doorbell.kindOf(query, body);
+        String kind = Doorbell.kindOf(door, query, body);
         Doorbell.remember(this, kind, from, body);
         doorAlert(kind);
         return kind;
@@ -871,8 +907,18 @@ public class DashboardService extends Service {
         JSONObject o = new JSONObject().put("configured", d != null).put("show", p.getBoolean(Doorbell.SHOW, false))
                 .put("over", p.getBoolean(Doorbell.OVER, false)).put("canOver", true).put("overPanel", true)
                 .put("secs", p.getInt(Doorbell.SECS, 45)).put("secsOver", p.getInt(Doorbell.SECS_OVER, 15))
-                .put("corner", p.getString(Doorbell.CORNER, "br")).put("size", p.getString(Doorbell.SIZE, "m"))
-                .put("kinds", new JSONArray(java.util.Arrays.asList(p.getString(Doorbell.KINDS, Doorbell.ALL_KINDS).split(","))));
+                .put("corner", p.getString(Doorbell.CORNER, "br")).put("size", p.getString(Doorbell.SIZE, "m"));
+        String hide = Doorbell.hidden(this);
+        o.put("hide", new JSONArray(hide.isEmpty() ? new java.util.ArrayList<String>() : java.util.Arrays.asList(hide.split(","))));
+        // The alerts for the browser: no stream tokens, only whether each has one (its own or the older fallback).
+        JSONArray al = Doorbell.alerts(d), shown = new JSONArray();
+        for (int i = 0; i < al.length(); i++) {
+            JSONObject a = al.getJSONObject(i);
+            shown.put(new JSONObject().put("id", a.optString("id")).put("name", a.optString("name"))
+                    .put("camera", a.optString("camera")).put("quiet", a.optBoolean("quiet"))
+                    .put("stream", d != null && !Doorbell.stream(d, a).isEmpty()).put("ownStream", !a.optString("stream").isEmpty()));
+        }
+        o.put("alerts", shown);
         if (d != null) {
             o.put("console", d.optString("console")).put("apiKey", !d.optString("apiKey").isEmpty())
                     .put("live", !d.optString("live").isEmpty()).put("pkg", !d.optString("pkg").isEmpty())
@@ -890,16 +936,67 @@ public class DashboardService extends Service {
         if (req.has("secsOver")) e.putInt(Doorbell.SECS_OVER, Math.max(5, Math.min(600, req.optInt("secsOver", 15))));
         if (req.optString("corner").matches("br|bl|tr|tl")) e.putString(Doorbell.CORNER, req.optString("corner"));
         if (req.optString("size").matches("[sml]")) e.putString(Doorbell.SIZE, req.optString("size"));
-        if (req.has("kinds")) {
-            JSONArray ks = req.optJSONArray("kinds");
+        if (req.has("hide")) {   // alert ids not shown on this TV
+            JSONArray hs = req.optJSONArray("hide");
             StringBuilder sb = new StringBuilder();
-            for (String k : Doorbell.ALL_KINDS.split(","))
-                for (int i = 0; ks != null && i < ks.length(); i++) if (k.equals(ks.optString(i))) { sb.append(sb.length() > 0 ? "," : "").append(k); break; }
-            e.putString(Doorbell.KINDS, sb.toString());
+            for (int i = 0; hs != null && i < hs.length(); i++) {
+                String k = hs.optString(i);
+                if (k.matches("[A-Za-z0-9_-]{1,24}")) sb.append(sb.length() > 0 ? "," : "").append(k);
+            }
+            e.putString(Doorbell.HIDE, sb.toString());
         }
         e.apply();
         if (req.optBoolean("close")) { new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> Doorbell.close(this)); return doorStatus(); }
         if (req.optBoolean("remove")) { Site.setDoor(this, null); return doorStatus(); }
+        if (req.has("alerts")) {   // the shared alert list: [{id?, name, camera, quiet, stream ("" keep, "-" clear, rtsps://… or a token)}]
+            JSONObject cur = Site.door(this);
+            if (cur == null) throw new IllegalArgumentException("Set up the Protect console first");
+            JSONObject d = new JSONObject(cur.toString());
+            JSONArray in = req.optJSONArray("alerts"), out = new JSONArray(), old = Doorbell.alerts(cur);
+            java.util.Set<String> ids = new java.util.HashSet<>(), keep = new java.util.HashSet<>();
+            // Existing alerts keep their ids (their webhook addresses): reserve them before naming new ones.
+            for (int i = 0; in != null && i < in.length(); i++) {
+                String id = in.optJSONObject(i) == null ? "" : in.optJSONObject(i).optString("id");
+                for (int j = 0; j < old.length(); j++) if (id.equals(old.optJSONObject(j).optString("id"))) keep.add(id);
+            }
+            for (int i = 0; in != null && i < in.length() && out.length() < 20; i++) {
+                JSONObject a = in.optJSONObject(i);
+                if (a == null) continue;
+                String name = a.optString("name").trim();
+                if (name.isEmpty()) continue;
+                if (name.length() > 40) name = name.substring(0, 40);
+                String id = a.optString("id");
+                if (!keep.contains(id) || ids.contains(id)) {   // a new alert: an id from its name, clear of the others
+                    String base = name.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
+                    if (base.isEmpty()) base = "alert";
+                    if (base.length() > 20) base = base.substring(0, 20);
+                    id = base;
+                    for (int n = 2; ids.contains(id) || keep.contains(id); n++) id = base + "-" + n;
+                }
+                ids.add(id);
+                JSONObject before = null;
+                for (int j = 0; j < old.length(); j++) if (id.equals(old.optJSONObject(j).optString("id"))) before = old.optJSONObject(j);
+                String stream = a.optString("stream").trim();
+                boolean noStream = stream.equals("-") || (stream.isEmpty() && before != null && before.optBoolean("noStream"));
+                java.util.regex.Matcher m = Pattern.compile("^rtsps?://([0-9A-Za-z.-]+):\\d+/([A-Za-z0-9]+)").matcher(stream);
+                if (m.find()) stream = m.group(2);
+                else if (stream.equals("-")) stream = "";
+                else if (stream.isEmpty()) stream = before == null ? "" : Doorbell.stream(cur, before);   // keep (incl. the older fallback)
+                else if (!stream.matches("[A-Za-z0-9]{8,64}")) throw new IllegalArgumentException("That stream for " + name + " isn't an rtsps:// address from Protect");
+                String cam = a.optString("camera");
+                if (!cam.matches("[A-Za-z0-9]{0,40}")) cam = "";
+                JSONObject o = new JSONObject().put("id", id).put("name", name);
+                if (!cam.isEmpty()) o.put("camera", cam);
+                if (!stream.isEmpty()) o.put("stream", stream);
+                else if (noStream) o.put("noStream", true);   // removed on purpose: no fallback to the older doorbell stream
+                if (a.optBoolean("quiet")) o.put("quiet", true);
+                out.put(o);
+            }
+            if (out.length() == 0) throw new IllegalArgumentException("Keep at least one alert");
+            d.put("alerts", out);
+            Site.setDoor(this, d);
+            return doorStatus();
+        }
         if (req.has("console") || req.has("apiKey") || req.has("live") || req.has("pkg")) {
             JSONObject cur = Site.door(this);
             JSONObject d = cur == null ? new JSONObject() : new JSONObject(cur.toString());
@@ -939,10 +1036,92 @@ public class DashboardService extends Service {
         JSONObject o = new JSONObject().put("ok", true);
         JSONObject d = Site.door(this);
         if (d != null && !d.optString("apiKey").isEmpty()) {
-            try { o.put("snapshot", Doorbell.snapshot(d).length); } catch (Exception e) { o.put("snapshotError", e.getMessage()); }
+            try { o.put("snapshot", Doorbell.snapshot(d, Doorbell.alert(d, kind).optString("camera")).length); }
+            catch (Exception e) { o.put("snapshotError", e.getMessage()); }
         }
         if (req.optBoolean("here")) doorHere(kind, "test" + System.currentTimeMillis()); else doorAlert(kind);
         return o;
+    }
+
+    // ---------------------------------------------------------------- integrations (the dashboard's Integrations tab)
+
+    private String tempText(Object t) {
+        if (!(t instanceof Number)) return "";
+        double c = ((Number) t).doubleValue();
+        return "C".equals(Config.prefs(this).getString(Config.UNITS, "F")) ? String.format(java.util.Locale.US, "%.1f °C", c)
+                : String.format(java.util.Locale.US, "%.1f °F", c * 9 / 5 + 32);
+    }
+
+    private static String ago(long at) {
+        long m = Math.round((System.currentTimeMillis() - at) / 60000.0);
+        return m < 1 ? "just now" : m < 60 ? m + " min ago" : Math.round(m / 60.0) + " h ago";
+    }
+
+    private static JSONObject status(String state, String text) throws JSONException { return new JSONObject().put("state", state).put("text", text); }
+
+    /** [{id, name, desc, status {state ok|idle|off|warn, text}, settings [...], readings [{label, text}], panel?, link?, info?}] */
+    private JSONArray integrations() throws JSONException {
+        JSONArray out = new JSONArray();
+        if (Radar.available(this)) {
+            boolean on = Radar.enabled(this);
+            JSONObject r = Radar.json();
+            String st = r == null ? "" : r.optString("state");
+            out.put(new JSONObject().put("id", "radar").put("name", "Presence radar").put("icon", "radar")
+                    .put("desc", "The radar built into this TV (the one Hisense art mode uses) tells whether someone is in the room, also while the computer or another input is on screen. Only someone / nobody is used; it is shared with your other TVs and never recorded elsewhere.")
+                    .put("status", !on ? status("off", "Off") : "someone".equals(st) ? status("ok", "Someone in the room") : "nobody".equals(st) ? status("ok", "Nobody in the room")
+                            : status("idle", r == null ? "Starting" : "No reading yet (" + r.optString("mode") + ")"))
+                    .put("settings", new JSONArray().put(new JSONObject().put("key", "radar").put("label", "Use the presence radar").put("type", "switch").put("value", on)))
+                    .put("readings", r != null && r.has("since") && !"unknown".equals(st)
+                            ? new JSONArray().put(new JSONObject().put("label", "someone".equals(st) ? "Someone since" : "Nobody since")
+                                    .put("text", new java.text.SimpleDateFormat("h:mm a", java.util.Locale.US).format(new java.util.Date(r.optLong("since"))))) : new JSONArray()));
+        }
+        boolean hsp = RoomLight.ownLight >= 0;
+        out.put(new JSONObject().put("id", "lightsensor").put("name", "TV light sensor").put("icon", "sun")
+                .put("desc", "This TV's own ambient light sensor (read through Hisense's picture service). Its reading is shared with the other TVs in the room, and CanvasArt can dim by it (Home screen → Screen saver → Dim by room light).")
+                .put("status", hsp ? status("ok", "Reading " + RoomLight.ownLight + " (0-20)") : status("idle", "No reading yet"))
+                .put("readings", hsp ? new JSONArray().put(new JSONObject().put("label", "Room light").put("text", RoomLight.ownLight + " of 20 · " + ago(RoomLight.ownAt))) : new JSONArray())
+                .put("link", new JSONObject().put("tab", "homescreen").put("label", "Dimming settings")));
+        // SwitchBot: this TV doesn't scan; it shows what the LG TVs hear.
+        JSONArray clim = RoomLog.get(this).getJSONArray("climate"), readings = new JSONArray();
+        for (int i = 0; i < clim.length(); i++) {
+            JSONObject c = clim.getJSONObject(i);
+            if (!"switchbot".equals(c.optString("src")) || !c.optBoolean("fresh")) continue;
+            StringBuilder t = new StringBuilder(tempText(c.opt("t")));
+            if (c.has("h")) t.append(" · ").append(c.optInt("h")).append(" %");
+            if (c.has("light")) t.append(" · light ").append(c.optInt("light")).append(" %");
+            readings.put(new JSONObject().put("label", c.optString("name")).put("text", t.append(" · ").append(ago(c.optLong("at"))).toString()));
+        }
+        out.put(new JSONObject().put("id", "switchbot").put("name", "Bluetooth sensors").put("icon", "bt")
+                .put("desc", "Temperature, humidity and light from SwitchBot sensors, read from their Bluetooth broadcasts by your LG TVs (this TV doesn't listen itself) and shared with every TV. Add the ones you want below (Find sensors); only those are kept.")
+                .put("status", readings.length() > 0 ? status("ok", readings.length() + " sensor" + (readings.length() == 1 ? "" : "s") + " (via your LG TVs)") : status("idle", "None of your sensors heard right now"))
+                .put("panel", "sensors")
+                .put("readings", readings));
+        JSONObject d = Site.door(this);
+        int alerts = Doorbell.alerts(d).length();
+        out.put(new JSONObject().put("id", "protect").put("name", "UniFi Protect").put("icon", "camera")
+                .put("desc", "Alerts from your UniFi Protect cameras and doorbell (Alarm Manager webhooks), shown on your TVs with the camera picture.")
+                .put("status", d != null ? status("ok", alerts + " alert" + (alerts == 1 ? "" : "s") + " · " + d.optString("console")) : status("idle", "Not set up"))
+                .put("panel", "protect"));
+        JSONArray posted = Signals.posted(), pr = new JSONArray();
+        for (int i = 0; i < posted.length(); i++) {
+            JSONObject p = posted.getJSONObject(i);
+            String t = (p.optString("presence") + " " + tempText(p.opt("t")) + (p.has("h") ? " · " + p.optInt("h") + " %" : "")).trim();
+            pr.put(new JSONObject().put("label", p.optString("name")).put("text", (t.isEmpty() ? "" : t + " · ") + ago(p.optLong("at"))));
+        }
+        out.put(new JSONObject().put("id", "api").put("name", "Signals API").put("icon", "api")
+                .put("desc", "Anything on your network (Home Assistant, a script, an ESP32 sensor) can add presence or readings to your TVs: POST /api/signals with an API key (Privacy → API keys) and the header X-CanvasFrame: 1. Posted signals count for 15 minutes after the last post.")
+                .put("status", posted.length() > 0 ? status("ok", posted.length() + " signal" + (posted.length() == 1 ? "" : "s") + " posted here") : status("idle", "Nothing posted here yet"))
+                .put("readings", pr)
+                .put("info", new JSONObject().put("endpoint", "/api/signals")
+                        .put("example", "{\"signals\":[{\"key\":\"hall-motion\",\"name\":\"Hall motion\",\"room\":\"<room id>\",\"presence\":\"someone\"}]}")));
+        return out;
+    }
+
+    private JSONObject integrationSet(JSONObject req) throws JSONException {
+        JSONObject set = req.optJSONObject("set");
+        if ("radar".equals(req.optString("id")) && set != null && set.has("radar")) Config.prefs(this).edit().putBoolean(Radar.PREF, set.optBoolean("radar")).apply();
+        else throw new IllegalArgumentException("Nothing to change there");
+        return new JSONObject().put("integrations", integrations());
     }
 
     // ---------------------------------------------------------------- Wake-on-LAN
@@ -1280,6 +1459,11 @@ public class DashboardService extends Service {
                     .put("platform", "android").put("saver", true)   // can run CanvasArt
                     .put("photosIn", Config.prefs(this).getBoolean(Config.MESH_PHOTOS, true))   // takes photos from the mesh
                     .put("urls", new JSONArray().put(tlsReady ? "https://" + lanIp() + ":" + Tls.PORT : "http://" + lanIp() + ":" + PORT));
+            // Sensors this TV has, for the Sync tab's chips: on = shared with the mesh now, off = switched off, unused = never used.
+            JSONObject sensors = new JSONObject();
+            if (Radar.available(this)) sensors.put("radar", Radar.enabled(this) ? "on" : "off");
+            if ("hisense".equals(brand())) sensors.put("light", "on").put("mic", "unused");   // HSP light sensor; built-in mic
+            identity.put("sensors", sensors);
             JSONObject m = macs();   // for Wake-on-LAN from the PC, the other TVs or Home Assistant
             if (m.length() > 0) identity.put("mac", m.optString("wifi".equals(m.optString("using")) ? "wifi" : "eth", m.optString("wifi"))).put("macs", m);
             Site.tick(this, identity, new Site.Hooks() {
@@ -1369,6 +1553,8 @@ public class DashboardService extends Service {
             shows.put("kind", "input").put("label", label);
         } else shows.put("kind", "app").put("label", app.isEmpty() ? "an app" : label(app));
         e.put("shows", shows);
+        JSONObject presence = Radar.json();   // {state: someone|nobody|unknown, since, at, src: "radar", mode}
+        if (presence != null) e.put("presence", presence);
         JSONObject st = photoStorage();   // room for photos from the mesh, and the storage bars on other TVs' dashboards
         e.put("free", st.optLong("free")).put("total", st.optLong("total")).put("photoBytes", st.optLong("used"));
         return e;
@@ -1384,6 +1570,10 @@ public class DashboardService extends Service {
             return;
         }
         if ("doorbell".equals(cmd.optString("action"))) { doorHere(cmd.optString("kind", "ring"), cmd.optString("event")); return; }
+        if ("blescan".equals(cmd.optString("action"))) {   // a sensor search: this TV doesn't scan, but syncs fast so results arrive
+            Site.fast(Math.min(cmd.optLong("until"), System.currentTimeMillis() + 130_000));
+            return;
+        }
         if ("signout".equals(cmd.optString("action"))) {   // "Sign out on all TVs" from another TV
             int n = Auth.revokeChain(this, cmd.optString("chain"));
             if (n > 0) android.util.Log.e("CanvasFrame", "signed out " + n + " session(s) (sign out on all TVs)");
@@ -1829,6 +2019,8 @@ public class DashboardService extends Service {
 
     private final java.util.concurrent.ScheduledExecutorService weatherTimer =
             Executors.newSingleThreadScheduledExecutor();
+    /** Sync rounds every 3 s while a sensor search runs (Site.fastUntil). */
+    private final java.util.concurrent.ScheduledExecutorService fastTimer = Executors.newSingleThreadScheduledExecutor();
 
     private void refreshWeatherAsync() {
         weatherTimer.execute(() -> {
@@ -1838,6 +2030,11 @@ public class DashboardService extends Service {
 
     private JSONObject settings() throws JSONException {
         JSONObject o = Config.toJson(this);
+        if (Radar.available(this)) {   // only TVs with Hisense's art-mode radar get the switch
+            o.put(Radar.PREF, Radar.enabled(this));
+            JSONObject r = Radar.json();
+            if (r != null) o.put("radar_now", r);
+        }
         // Hidden apps with labels, so the dashboard can show names.
         JSONArray hidden = new JSONArray();
         JSONArray pk = o.getJSONArray(Config.HIDDEN);

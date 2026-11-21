@@ -33,6 +33,9 @@ const RoomLight = require('./lib/roomlight');
 const Wol = require('./lib/wol');
 const PcLink = require('./lib/pclink');
 const Doorbell = require('./lib/doorbell');
+const Ble = require('./lib/ble');
+const Signals = require('./lib/signals');
+const RoomLog = require('./lib/roomlog');
 const { samePhoto } = Site;
 const Tls = require('./lib/tls');
 
@@ -73,6 +76,14 @@ const cfg = Config.create(DATA, () => {});
 const gh = Glasshouse.create(DATA, log);
 const privacy = Privacy.create(DATA, tv.luna, log);
 const lgs = LgSettings.create(tv.luna);
+const pointer = require('./lib/pointer').create({ dataDir: DATA, luna: tv.luna, log });   // Magic Remote: pointer on motion or only on shake
+/** The TV settings rows plus CanvasFrame's own Magic Remote row (pointer wake-up), first in the Magic Remote section. */
+function withPointer(out) {
+  let sec = out.sections.find(x => x.id === 'remote');
+  if (!sec) { sec = { id: 'remote', title: 'Magic Remote', rows: [] }; out.sections.push(sec); }
+  sec.rows.unshift(pointer.row());
+  return out;
+}
 const metrics = Metrics.create();
 const appMgr = Apps.create(DATA, tv, log);
 const saver = Screensaver.create(DATA, tv.luna, cfg, PHOTOS, log);
@@ -148,7 +159,11 @@ const site = Site.create(DATA, sync, cfg, log, {
   urls: () => [tlsInfo ? 'https://' + tv.lanIp() + ':' + TLS_PORT : 'http://' + tv.lanIp() + ':' + PORT],
   caps: () => {   // own screen saver? takes mesh photos? MACs for Wake-on-LAN
     const m = Wol.macs(), mac = m[m.using === 'eth' ? 'eth' : 'wifi'] || m.wifi || m.eth;
-    return Object.assign({ saver: saver.status().supported, photosIn: cfg.get().mesh_photos !== false }, mac ? { mac, macs: m } : {});
+    // Sensors for the Sync tab's chips: light = on while it streams (AI Brightness), idle otherwise; the Magic Remote's
+    // push-to-talk mic is never used by CanvasFrame.
+    const ls = roomLight.status(), sensors = { mic: 'unused' };
+    if (ls.present !== false && ls.ai != null) sensors.light = roomLight.env() ? 'on' : 'idle';
+    return Object.assign({ saver: saver.status().supported, photosIn: cfg.get().mesh_photos !== false, sensors }, mac ? { mac, macs: m } : {});
   },
   auth: { list: () => auth.syncList(), add: a => auth.addSynced(a), remove: aid => auth.remove(aid) },   // shared authenticators
   mesh: {   // shared with the other TVs in the mesh (lib/site.js)
@@ -203,6 +218,7 @@ async function siteCommand(c, v) {
     return;
   }
   if (c.action === 'doorbell') { door.command(c); return; }
+  if (c.action === 'blescan') { const until = Math.min(+c.until || 0, Date.now() + 130000); site.fast(until); ble.search(until); return; }
   if (c.action === 'signout') {   // "Sign out on all TVs" from another TV
     const n = auth.revokeChain(String(c.chain || ''));
     if (n) log('auth: signed out ' + n + ' session(s) (sign out on all TVs)');
@@ -446,6 +462,71 @@ async function homeData() {
 }
 
 const door = Doorbell.create({ dataDir: DATA, site, tv, saver, log });   // UniFi Protect doorbell alerts
+
+// ---- integrations: each one feeds signals (lib/signals.js) and describes itself for the dashboard's Integrations tab.
+// Per-TV switches in <data>/integrations.json.
+const INTEG_FILE = path.join(DATA, 'integrations.json');
+let integPrefs = {};
+try { integPrefs = JSON.parse(fs.readFileSync(INTEG_FILE, 'utf8')) || {}; } catch (e) { integPrefs = {}; }
+// Bluetooth sensors the user added (site items sensor:<id> {name, room?, where?, vendor, kind}), refreshed every 5 s.
+let sensorItems = {};
+const refreshSensors = () => { const it = site.view().items || {}, o = {};
+  for (const k of Object.keys(it)) if (k.startsWith('sensor:') && !it[k].x && it[k].d) o[k.slice(7)] = it[k].d;
+  sensorItems = o; };
+setTimeout(refreshSensors, 3000);
+setInterval(refreshSensors, 5000);
+const ble = Ble.create({ log, enabled: () => integPrefs.ble_scan !== false, adopted: () => new Set(Object.keys(sensorItems)),
+  onSearch: (found, until) => site.scanResults(found.map(f => ({ id: f.id, vendor: f.vendor, kind: f.kind, t: f.t, h: f.h, light: f.light,
+    co2: f.co2, bat: f.bat, rssi: f.rssi, best: f.best, at: f.at })), until) });
+const signals = Signals.create({ site, log });
+signals.register('switchbot', () => ble.climate().map(r => { const s = sensorItems[r.id] || {};
+  return Object.assign({}, r, { key: 'switchbot/' + r.id, name: s.name || (r.kind + ' ' + r.id.slice(-4).toUpperCase()), kind: r.kind,
+    room: s.room || undefined, where: s.where || undefined }, r.light != null ? { light: r.light * 5 } : {}); }));   // light level 1-20 -> %
+signals.register('lightsensor', () => { const e = roomLight.env();
+  return e ? [{ key: 'light/' + site.id, name: (cfg.get().device_name || 'TV') + ' light sensor', kind: 'TV light sensor', light: e.pct, at: Date.now() }] : []; });
+const roomlog = RoomLog.create({ dataDir: DATA, site, log });
+ble.start();
+roomlog.start();
+setInterval(() => signals.publish(false), 30000);
+setTimeout(() => signals.publish(true), 25000);
+
+const tempText = t => t == null ? '' : cfg.get().units === 'C' ? t.toFixed(1) + ' °C' : (t * 9 / 5 + 32).toFixed(1) + ' °F';
+const ago = at => { const m = Math.round((Date.now() - at) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.round(m / 60) + ' h ago'; };
+/** The Integrations tab: [{id, name, desc, status {state ok|idle|off|warn, text}, settings [...], readings [{label, text}], panel?, info?}]. */
+function integrations() {
+  const on = integPrefs.ble_scan !== false, clim = ble.climate(), d = door.status(), ls = roomLight.status(), posted = signals.posted();
+  const lightNow = roomLight.env();
+  return [
+    { id: 'switchbot', name: 'Bluetooth sensors', icon: 'bt',
+      desc: 'Temperature, humidity and light from SwitchBot sensors (Hub 2, Meter, Meter Plus, Outdoor Meter, Meter Pro), read straight from their Bluetooth broadcasts: no app, account or pairing. Add the ones you want below (Find sensors); only those are kept and shared. This TV listens for 8 seconds every 2 minutes.',
+      status: !on ? { state: 'off', text: 'Off on this TV' } : ble.searching() ? { state: 'warn', text: 'Searching for sensors…' }
+        : clim.length ? { state: 'ok', text: 'Hearing ' + clim.length + ' of your sensor' + (clim.length === 1 ? '' : 's') } : { state: 'idle', text: Object.keys(sensorItems).length ? 'None of your sensors heard here' : 'No sensors added yet' },
+      settings: [{ key: 'ble_scan', label: 'Listen for Bluetooth sensors on this TV', type: 'switch', value: on }],
+      panel: 'sensors',
+      readings: clim.map(r => ({ label: (sensorItems[r.id] || {}).name || r.kind + ' ' + r.id.slice(-4).toUpperCase(),
+        text: [tempText(r.t), r.h != null ? r.h + ' %' : '', r.light != null ? 'light ' + r.light * 5 + ' %' : '', r.co2 != null ? r.co2 + ' ppm CO₂' : '',
+          r.bat != null ? 'battery ' + r.bat + ' %' : '', 'signal ' + r.rssi + ' dBm', ago(r.at)].filter(Boolean).join(' · ') })) },
+    { id: 'lightsensor', name: 'TV light sensor', icon: 'sun',
+      desc: "This TV's own ambient light sensor. LG only runs it while AI Brightness is on (Home screen → Screen saver → Dim by room light switches that for you). Its reading is shared with the other TVs in the room.",
+      status: ls.present === false ? { state: 'off', text: 'No sensor on this TV' } : lightNow ? { state: 'ok', text: 'Room light ' + lightNow.pct + ' %' } : { state: 'idle', text: "Idle (LG's AI Brightness is off)" },
+      readings: lightNow ? [{ label: 'Room light', text: lightNow.pct + ' % (raw ' + lightNow.lum + ')' }] : [], link: { tab: 'homescreen', label: 'Dimming settings' } },
+    { id: 'protect', name: 'UniFi Protect', icon: 'camera',
+      desc: 'Alerts from your UniFi Protect cameras and doorbell (Alarm Manager webhooks), shown on your TVs with the camera picture.',
+      status: d.configured ? { state: 'ok', text: (d.alerts || []).length + ' alert' + ((d.alerts || []).length === 1 ? '' : 's') + ' · ' + d.console } : { state: 'idle', text: 'Not set up' },
+      panel: 'protect' },
+    { id: 'api', name: 'Signals API', icon: 'api',
+      desc: 'Anything on your network (Home Assistant, a script, an ESP32 sensor) can add presence or readings to your TVs: POST /api/signals with an API key (Privacy → API keys) and the header X-CanvasFrame: 1. Posted signals count for 15 minutes after the last post.',
+      status: posted.length ? { state: 'ok', text: posted.length + ' signal' + (posted.length === 1 ? '' : 's') + ' posted here' } : { state: 'idle', text: 'Nothing posted here yet' },
+      readings: posted.map(p => ({ label: p.name, text: [p.presence, tempText(p.t), p.h != null ? p.h + ' %' : '', ago(p.at)].filter(Boolean).join(' · ') })),
+      info: { endpoint: '/api/signals', example: '{"signals":[{"key":"hall-motion","name":"Hall motion","room":"<room id>","presence":"someone"}]}' } },
+  ];
+}
+function integrationSet(b) {
+  if (b.id === 'switchbot' && b.set && 'ble_scan' in b.set) integPrefs.ble_scan = !!b.set.ble_scan;
+  else throw new Error('Nothing to change there');
+  try { fs.writeFileSync(INTEG_FILE, JSON.stringify(integPrefs)); } catch (e) { log('integrations: ' + e.message); }
+  return { integrations: integrations() };
+}
 
 // ================================================================ router
 
@@ -694,6 +775,11 @@ async function route(req, res) {
       case 'GET /api/doorbell': r = door.status(); break;
       case 'POST /api/doorbell': r = await door.set(body); break;
       case 'POST /api/doorbell/test': r = await door.test(body); break;
+      case 'GET /api/doorbell/cameras': r = { cameras: await door.cameras() }; break;   // the alert editor's camera picker
+      case 'GET /api/integrations': r = { integrations: integrations() }; break;
+      case 'POST /api/integrations': r = integrationSet(body); break;
+      case 'POST /api/signals': r = signals.post(body, peer); break;   // from outside: Home Assistant, scripts, sensors
+      case 'GET /api/rooms': r = Object.assign(roomlog.get(), { units: cfg.get().units === 'C' ? 'C' : 'F' }); break;
       case 'GET /api/home/dim': {   // the idle home screen asks how dark to be (OLED only)
         const since = +url.searchParams.get('since') || Date.now();
         const dim = isOled ? saver.dimFor(since) : 0;
@@ -720,8 +806,10 @@ async function route(req, res) {
         }
         r = await serviceMenu();
         break;
-      case 'GET /api/tvsettings': r = await lgs.read(); break;
-      case 'POST /api/tvsettings': await lgs.set(String(body.id || ''), body.value); r = await lgs.read(); break;
+      case 'GET /api/tvsettings': r = withPointer(await lgs.read()); break;
+      case 'POST /api/tvsettings':
+        if (body.id === 'pointerWake') await pointer.set(String(body.value || '')); else await lgs.set(String(body.id || ''), body.value);
+        r = withPointer(await lgs.read()); break;
       case 'GET /api/privacy': r = Object.assign(await privacy.status(), { glasshouse: gh.detect() }); break;
       case 'GET /api/network': r = await network.status(); break;
       case 'POST /api/network':

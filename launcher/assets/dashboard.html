@@ -188,8 +188,67 @@ try { var cfU = new URL(location.href); if (cfU.searchParams.has('look') || cfU.
   .app .name { flex: 1; min-width: 0; }
   .app .name b { font-weight: 500; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .app .name span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  /* Phones: the header controls get their own full-width row (the TV picker shrinks), and app rows put their buttons
+     (Rename / Hide / Uninstall on LG) on a second line instead of pushing past the screen edge. */
+  @media (max-width: 600px) {
+    header > .row { flex: 1 1 100% !important; min-width: 0; flex-wrap: nowrap; }
+    header > .row #devSel { flex: 1 1 0; min-width: 0; max-width: none !important; }
+    .app { flex-wrap: wrap; }
+    .app .name { flex: 1 1 calc(100% - 80px); }
+    .pref { flex-wrap: wrap; }   /* a wide control (segmented choices) drops under its text instead of past the edge */
+    .seg { max-width: 100%; flex-wrap: wrap; }
+  }
+  code { overflow-wrap: anywhere; }   /* long commands (sign-in reset over ssh/adb) wrap instead of widening the page */
   .tag { font-size: 11px; padding: 2px 8px; border-radius: 99px; background: rgba(232,201,154,.18); color: var(--accent); margin-left: 6px; white-space: nowrap; }
   .tag.off { background: rgba(239,143,143,.16); color: var(--bad); }
+  /* Chart series (validated palette: dark default, light below); identity is never colour alone: direct labels + legend */
+  :root { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; }
+  html.light { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; }
+  /* Integrations */
+  .integ { margin-bottom: 12px; }
+  .integ .ihead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .integ .ihead b { font-size: 16px; }
+  .ist { font-size: 12px; padding: 2px 9px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
+  .ist.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
+  .ist.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
+  .integ .iread { display: grid; grid-template-columns: minmax(120px, 30%) 1fr; gap: 4px 12px; font-size: 13px; margin: 8px 0 0; }
+  .integ .iread span:nth-child(odd) { color: var(--muted); }
+  .integ pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; background: rgba(0,0,0,.2); padding: 8px 10px; border-radius: 8px; margin: 6px 0 0; }
+  /* Rooms: one row per room, a 24 h timeline under it */
+  .roomrow { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .roomrow:last-child { border-bottom: 0; }
+  .roomrow .rtop { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .roomrow .rtop b { font-size: 15px; }
+  .roomrow .rnow { font-size: 13px; color: var(--muted); }
+  .roomrow .rnow .here { color: var(--ok); }
+  .roomrow .rclim { margin-left: auto; font-size: 14px; }
+  .tl { display: block; width: 100%; height: 16px; margin-top: 6px; border-radius: 4px; background: rgba(128,128,128,.12); }
+  .tlaxis { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .lg { display: inline-block; width: 14px; height: 8px; border-radius: 2px; vertical-align: middle; }
+  .lg-p { background: var(--s4); } .lg-a { background: var(--text); width: 3px; }
+  a[data-goto] { color: var(--accent); }
+  .sens { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 8px 0; display: grid; gap: 6px; }
+  .sens .srow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .sens .sname { flex: 2 1 180px; font-weight: 600; }
+  .sens .splace { flex: 1 1 150px; }
+  .sens .swhere { flex: 1 1 140px; }
+  .sens .sread { font-size: 13px; }
+  .sens .sheard { font-size: 12px; color: var(--muted); }
+  .sens.near { border-color: var(--ok); box-shadow: 0 0 0 1px var(--ok) inset; }
+  .sens .near-tag { color: var(--ok); font-size: 12px; font-weight: 600; }
+  .sens button { flex: none; }
+  .chart { margin-top: 16px; }
+  .chart h3 { font-size: 13px; font-weight: 600; margin: 0 0 4px; }
+  .chart svg { display: block; width: 100%; height: 150px; overflow: visible; }
+  .chart .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .chart .legend i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+  .sensors { margin: 4px 0 2px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .sensor { font-size: 12px; padding: 2px 9px; border-radius: 99px; border: 1px solid rgba(232,201,154,.45); color: var(--accent); white-space: nowrap; cursor: default; }
+  .sensor.on { background: rgba(232,201,154,.18); }
+  .sensor.idle, .sensor.off { border-style: dashed; opacity: .8; }
+  .sensor.unused { border-color: rgba(255,255,255,.18); color: var(--muted, #999); }
+  html.light .sensor.unused { border-color: rgba(0,0,0,.18); }
+  #siteSensors .pref { padding: 8px 0; }
   .list { padding: 0; }
 
   /* Switch */
@@ -424,20 +483,27 @@ try { var cfU = new URL(location.href); if (cfU.searchParams.has('look') || cfU.
   #tvName { cursor: text; border-radius: 6px; outline: none; padding: 0 4px; margin-left: -4px; }
   #tvName:hover:not([contenteditable="true"]) { background: rgba(127,127,127,.12); }
   #tvName[contenteditable="true"] { box-shadow: 0 0 0 2px var(--accent, #7FB3FF); }
-  /* Doorbell: which alerts this TV shows; the webhook address picker */
+  /* UniFi Protect alerts (id prefix "door"): which alerts this TV shows; the webhook address picker */
   .doorKinds { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
   .doorKinds label { cursor: pointer; }
   .doorKinds input { position: absolute; opacity: 0; pointer-events: none; }
   .doorKinds span { display: inline-block; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line, rgba(128,128,128,.35)); color: var(--muted); font-size: 13px; }
   .doorKinds input:checked + span { color: var(--text); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
   .doorKinds input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .doorHookPick { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
-  .doorHookPick button { flex: none; min-width: 90px; }
-  .doorHookPick button.on { background: var(--accent); color: var(--bg, #111); border-color: var(--accent); }
-  .doorHookUrl { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-  .doorHookUrl button { flex: none; }
-  .doorHookUrl button small { opacity: .7; font-size: 11px; margin-left: 4px; }
-  .doorHookUrl code { word-break: break-all; font-size: 12px; flex: 1 1 260px; }
+  .doorAlert { border: 1px solid var(--line, rgba(128,128,128,.35)); border-radius: 12px; padding: 10px 12px; margin: 8px 0; display: grid; gap: 8px; }
+  .doorAlert .dar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .doorAlert .daName { flex: 2 1 200px; font-weight: 600; }
+  .doorAlert .daCam { flex: 1 1 180px; }
+  .doorAlert .daStream { flex: 2 1 220px; }
+  .doorAlert .daState { font-size: 13px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .doorAlert .daState .ok { color: var(--good, #5fc48a); }
+  .doorAlert .daState .warn { color: var(--accent); }
+  .doorAlert .daState .none { color: var(--muted); }
+  .doorAlert .daState code { flex: none; }
+  .doorAlert .daState button { padding: 3px 10px; font-size: 12px; }
+  .doorAlert .daQuiet { font-size: 13px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+  .doorAlert button { flex: none; }
+  .doorAlert code { word-break: break-all; font-size: 12px; flex: 1 1 240px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -484,6 +550,7 @@ try { var cfU = new URL(location.href); if (cfU.searchParams.has('look') || cfU.
     <button role="tab" data-tab="privacy">Privacy</button>
     <button role="tab" data-tab="homescreen">Home screen</button>
     <button role="tab" data-tab="site" hidden>Sync</button>
+    <button role="tab" data-tab="integrations" hidden>Integrations</button>
   </nav>
 
   <!-- Overview -->
@@ -515,6 +582,17 @@ try { var cfU = new URL(location.href); if (cfU.searchParams.has('look') || cfU.
       <div class="card stat" id="remoteCard" hidden><div class="k">Magic Remote</div><div class="v" id="remoteV">—</div><div class="s" id="remoteS"></div><div class="bar"><i id="remoteBar" style="width:0"></i></div></div>
     </div>
     <div id="hdmiBlock" hidden><h2>HDMI inputs</h2><div class="hdmis" id="hdmiList"></div></div>
+
+    <div id="roomsBlock" hidden>
+      <h2>Rooms</h2>
+      <div class="card" style="margin-bottom:14px">
+        <div id="roomsList"></div>
+        <div class="tlaxis" id="roomsAxis"></div>
+        <p class="sub" style="margin:8px 0 0"><span class="lg lg-p"></span> someone there (radar or a presence signal) &nbsp; <span class="lg lg-a"></span> a TV was used. Last 24 hours; hover for times.</p>
+        <div id="climCharts"></div>
+        <p class="sub" style="margin:10px 0 0">Readings come from <a href="#integrations" data-goto="integrations">your integrations</a> and are shared by all your TVs.</p>
+      </div>
+    </div>
 
     <div id="pcAppBlock" hidden>
       <h2>CanvasFrame for Windows</h2>
@@ -662,6 +740,16 @@ try { var cfU = new URL(location.href); if (cfU.searchParams.has('look') || cfU.
         <svg id="lightChart" viewBox="0 0 480 90" preserveAspectRatio="none" hidden></svg>
       </div>
     </div>
+    <div data-needs="radar" hidden>
+      <h2>Presence</h2>
+      <div class="card">
+        <div class="pref">
+          <div class="txt"><b>Presence radar</b><span>Uses the radar built into this TV (the one Hisense art mode uses) to tell whether someone is in the room, also while the computer or another input is on screen. Only "someone / nobody" is used: it is shared with your other CanvasFrame TVs on this network (their screen savers react to it) and never recorded or sent anywhere else.</span></div>
+          <label class="switch"><input type="checkbox" data-set="radar"><span></span></label>
+        </div>
+        <p class="sub" id="radarNow" style="margin:10px 0 0"></p>
+      </div>
+    </div>
     <div id="storageBlock" hidden>
       <h2>Storage</h2>
       <div class="card">
@@ -689,8 +777,15 @@ try { var cfU = new URL(location.href); if (cfU.searchParams.has('look') || cfU.
   <!-- Rooms & TVs: the shared site (Site.java / lib/site.js), the same on every TV and editable from any of them -->
   <section id="site" hidden>
     <p class="sub" style="margin-top:0">Every CanvasFrame TV keeps a copy of this and passes changes on to the others, so you can change it from any TV's dashboard. <span id="siteCoord"></span></p>
+    <h2>Rooms</h2>
+    <div class="card">
+      <div id="siteRooms"></div>
+      <div class="row" style="margin-top:12px"><input type="text" id="siteNewRoom" maxlength="30" placeholder="New room, e.g. Living room" style="flex:1"><button id="siteAddRoom" style="flex:none">Add room</button></div>
+      <p class="sub" style="margin:10px 0 0">Rooms marked "next to" each other count as nearby. When someone uses a TV (remote, turning it on, waking its screen saver), CanvasFrame screen savers in the same room act as if they'd been touched: the late-night fade starts over. In a room next door it's gentler: fading is delayed and a deep fade lifts partway.</p>
+    </div>
     <h2>TVs</h2>
     <div class="card" id="siteTvs"><p class="sub">Loading…</p></div>
+    <div class="card" id="siteSensors" hidden style="margin-top:10px"></div>
     <div class="row" style="margin-top:12px"><button id="siteIdAll" style="flex:none">Identify all TVs</button></div>
     <h2>Screen savers together</h2>
     <div class="card">
@@ -706,12 +801,6 @@ try { var cfU = new URL(location.href); if (cfU.searchParams.has('look') || cfU.
     </div>
     <h2>Consistency</h2>
     <div class="card"><div class="list" id="siteIssues"></div></div>
-    <h2>Rooms</h2>
-    <div class="card">
-      <div id="siteRooms"></div>
-      <div class="row" style="margin-top:12px"><input type="text" id="siteNewRoom" maxlength="30" placeholder="New room, e.g. Living room" style="flex:1"><button id="siteAddRoom" style="flex:none">Add room</button></div>
-      <p class="sub" style="margin:10px 0 0">Rooms marked "next to" each other count as nearby. When someone uses a TV (remote, turning it on, waking its screen saver), CanvasFrame screen savers in the same room act as if they'd been touched: the late-night fade starts over. In a room next door it's gentler: fading is delayed and a deep fade lifts partway.</p>
-    </div>
     <h2>Linked TVs</h2>
     <div id="syncBlock" hidden>
       <div class="card">
@@ -736,13 +825,23 @@ try { var cfU = new URL(location.href); if (cfU.searchParams.has('look') || cfU.
         </details>
     </div>
 
+  </section>
+
+  <section id="integrations" hidden>
+    <p class="sub" style="margin:0 0 12px">Sensors and services your TVs use. What one TV picks up (presence, room light, temperature) is shared
+      with every TV, so each dashboard's Rooms card can show it. Switches here apply to this TV unless they say otherwise.</p>
+    <div id="integList"><p class="sub">Loading…</p></div>
+    <div id="sensBlock" hidden>
+      <div id="sensMine"></div>
+      <div class="row" style="margin-top:10px;align-items:center"><button type="button" id="sensFind" style="flex:none">Find sensors</button><span class="sub" id="sensFindNote"></span></div>
+      <div id="sensFound"></div>
+    </div>
     <div id="doorBlock" hidden>
-      <h2>Doorbell</h2>
-      <div class="card">
-        <p class="sub" style="margin:0 0 8px">UniFi Protect: when the doorbell rings (or sees a person or a package), your TVs show the camera in a panel over the
+      <div>
+        <p class="sub" style="margin:0 0 8px">When UniFi Protect sends an alert (a ring, a person, a package or motion), your TVs show the camera in a panel over the
           screen saver and the home screen. The setup is shared by all your TVs; the API key and stream addresses only travel between them.</p>
         <div class="pref">
-          <div class="txt"><b>Show doorbell alerts on this TV</b><span id="doorShowDesc">Over CanvasFrame's screen saver and home screen, for about 45 seconds (any key closes it).</span></div>
+          <div class="txt"><b>Show Protect alerts on this TV</b><span id="doorShowDesc">Over CanvasFrame's screen saver and home screen, for about 45 seconds (any key closes it).</span></div>
           <label class="switch"><input type="checkbox" id="doorShow"><span></span></label>
         </div>
         <div class="pref">
@@ -751,8 +850,8 @@ try { var cfU = new URL(location.href); if (cfU.searchParams.has('look') || cfU.
             <option value="45">45 seconds</option><option value="60">1 minute</option><option value="120">2 minutes</option><option value="300">5 minutes</option></select>
         </div>
         <div class="pref" id="doorKindsRow">
-          <div class="txt"><b>Alerts on this TV</b><span>Motion helps with doorbells that report people only when they loiter.</span></div>
-          <div class="doorKinds" id="doorKinds"><label><input type="checkbox" value="ring"><span>Ring</span></label><label><input type="checkbox" value="person"><span>Person</span></label><label><input type="checkbox" value="package"><span>Package</span></label><label><input type="checkbox" value="motion"><span>Motion</span></label></div>
+          <div class="txt"><b>Alerts on this TV</b><span>Which of your alerts this TV shows. New alerts show on every TV until you switch them off here.</span></div>
+          <div class="doorKinds" id="doorKinds"></div>
         </div>
         <div class="pref" id="doorOverRow">
           <div class="txt"><b>Also over other inputs and apps</b><span id="doorOverDesc">A smaller panel in the corner, e.g. over the computer.</span></div>
@@ -778,21 +877,24 @@ try { var cfU = new URL(location.href); if (cfU.searchParams.has('look') || cfU.
               <input type="text" id="doorConsole" placeholder="10.0.0.1" style="max-width:220px"></div>
             <div class="pref"><div class="txt"><b>API key</b><span>For snapshots: UniFi OS → Settings → Control Plane → Integrations → Create API key. <span id="doorKeyState"></span></span></div>
               <input type="text" id="doorKey" class="secret" placeholder="paste to set or replace" style="max-width:260px"></div>
-            <div class="pref"><div class="txt"><b>Doorbell stream</b><span>Protect → the doorbell → Settings → Advanced → RTSP: the Medium quality address (rtsps://…). <span id="doorLiveState"></span></span></div>
-              <input type="text" id="doorLive" class="secret" placeholder="rtsps://…" style="max-width:260px"></div>
-            <div class="pref"><div class="txt"><b>Package camera stream</b><span>The package camera's RTSP address, for package alerts. <span id="doorPkgState"></span></span></div>
-              <input type="text" id="doorPkg" class="secret" placeholder="rtsps://…" style="max-width:260px"></div>
             <div class="row" style="margin-top:10px"><button type="submit" style="flex:none">Save</button><button type="button" id="doorRemove" style="flex:none">Remove setup</button></div>
           </form>
-          <div id="doorHook" hidden style="margin-top:14px">
-            <b>Webhook for Protect</b>
-            <p class="sub" style="margin:4px 0 6px">Protect → Alarm Manager → Create alarm → trigger (Doorbell ring / Person / Package / Motion) → action <i>Webhook</i>, method POST,
-              with the matching address below. Any of your TVs can receive it; it tells the others.</p>
-            <div class="doorHookPick" id="doorHookPick"><button type="button" data-kind="ring" class="on">Ring</button><button type="button" data-kind="person">Person</button><button type="button" data-kind="package">Package</button><button type="button" data-kind="motion">Motion</button></div>
-            <div class="doorHookUrl"><button type="button" id="doorHookCopy"><b>Webhook</b> <small>Click to copy</small></button><code id="doorHookUrl"></code></div>
+          <div id="doorAlertsBox" hidden style="margin-top:16px">
+            <b>Alerts</b>
+            <p class="sub" style="margin:4px 0 6px">Each alert has its own webhook address. In Protect: <i>Alarm Manager → Create alarm</i>, pick the trigger
+              (a ring, a person, a package, motion, a sensor…) and the camera, choose the action <i>Webhook</i> (method POST) and paste that
+              alert's address. The name is the title your TVs show. Any TV can receive it and tells the others.</p>
+            <p class="sub" style="margin:0 0 6px"><b>Camera</b>: where the snapshot and the camera name come from (needs the API key).
+              <b>Stream</b>: the camera's RTSP address for live video on the Hisense (Protect → the camera → Settings → Advanced → RTSP,
+              Medium quality). A saved stream stays until you paste a new one or press <i>Remove stream</i>. <b>Repeats often</b>: for motion and
+              the like: it never covers an alert that's up and waits 30 seconds between showings.</p>
+            <div id="doorAlerts"></div>
+            <div class="row" style="margin-top:8px"><button type="button" id="doorAlertAdd" style="flex:none">Add alert</button>
+              <button type="button" id="doorAlertSave" style="flex:none">Save alerts</button><span class="sub" id="doorAlertNote"></span></div>
           </div>
         </details>
-        <div class="row" style="margin-top:12px"><button id="doorTestAll" style="flex:none">Test on all TVs</button><button id="doorTestHere" style="flex:none">Test on this TV</button></div>
+        <div class="row" style="margin-top:12px;align-items:center"><select id="doorTestPick" style="flex:0 1 240px" title="Which alert to test"></select>
+          <button id="doorTestAll" style="flex:none">Test on all TVs</button><button id="doorTestHere" style="flex:none">Test on this TV</button></div>
         <div class="sub" id="doorRecent" style="margin-top:10px"></div>
       </div>
     </div>
@@ -1289,6 +1391,44 @@ async function loadWall() {
   } catch (e) { /* older TV or signed out */ }
   if (tab === 'overview') wallTimer = setTimeout(loadWall, 10000);
 }
+// Sensors a TV announces in dev.sensors: {radar|light|mic: on|off|idle|unused}. Chips on the TV rows, and per room which
+// readings every TV there can use.
+const SENSORS = {
+  radar: { label: 'Presence radar', on: 'Tells the TVs in its room whether someone is there, also while another input is on.',
+    off: 'Switched off on this TV (Home screen tab → Presence).' },
+  light: { label: 'Light sensor', on: 'Shares the room light: every TV in this room can dim by it (Dim by room light → Light from).',
+    idle: "Present but idle: it only runs while Dim by room light (LG's AI Brightness) is on, on that TV." },
+  mic: { label: 'Microphone', unused: 'This TV has one; CanvasFrame never uses it.' },
+};
+function sensorChips(d, platform) {
+  const s = d.sensors || {};
+  return Object.keys(SENSORS).filter(k => s[k]).map(k => {
+    const st = s[k], info = SENSORS[k];
+    const label = k === 'mic' && platform === 'webos' ? 'Remote mic' : info.label;
+    const tip = info[st] || '';
+    return `<span class="sensor ${esc(st)}" title="${esc(tip)}">${esc(label)}${st === 'on' ? '' : ' · ' + esc(st === 'unused' ? 'not used' : st)}</span>`;
+  }).join('');
+}
+function renderSensors(v, devs, rooms, nameOf) {
+  const lines = [];
+  for (const r of rooms) {
+    const here = devs.filter(id => ((siteItem(v, 'place:' + id) || {}).room) === r.id);
+    if (!here.length) continue;
+    const by = (k, st) => here.filter(id => ((siteItem(v, 'dev:' + id) || {}).sensors || {})[k] === st).map(nameOf);
+    const radar = by('radar', 'on'), light = by('light', 'on'), idle = by('light', 'idle'), roff = by('radar', 'off');
+    const bits = [];
+    if (radar.length) bits.push('presence from ' + radar.join(', '));
+    if (light.length) bits.push('room light from ' + light.join(', '));
+    const hints = [];
+    if (!light.length && idle.length) hints.push(idle.join(', ') + ' has a light sensor that is idle: switch on Dim by room light there to share it');
+    if (!radar.length && roff.length) hints.push(roff.join(', ') + ' has a presence radar that is switched off');
+    if (!bits.length && !hints.length) continue;
+    const others = here.length > 1 ? ` · used by all ${here.length} TVs here` : here.length === 1 && bits.length ? ' · add more TVs to this room to share it' : '';
+    lines.push(`<div class="pref"><div class="txt"><b>${esc(r.name)}</b><span>${esc(bits.length ? bits.join(' · ') + others : 'No shared sensors yet')}${hints.length ? '. ' + esc(hints.join('. ')) + '.' : ''}</span></div></div>`);
+  }
+  $('#siteSensors').innerHTML = lines.length ? '<p class="sub" style="margin:0 0 4px">Sensors by room: what every TV in the room can use.</p>' + lines.join('') : '';
+  $('#siteSensors').hidden = !lines.length;
+}
 function renderSite(v) {
   siteData = v;
   renderIssues(v);
@@ -1323,10 +1463,12 @@ function renderSite(v) {
     return `<div class="sitetv${away ? ' away' : ''}"><div class="ico">${brandSvg(d.brand)}</div><div class="body">
       <b>${esc(d.name || 'TV')}</b>${id === v.self ? ' <span class="tag">this TV</span>' : ''}${id === v.coordinator ? ' <span class="tag">coordinator</span>' : ''}
       <div class="state"><span class="dotlive ${away ? '' : scr}"></span>${esc(bits.join(' · '))}${pl.room && roomName(pl.room) ? ' · ' + esc(roomName(pl.room)) : ''}</div>
+      ${d.sensors && Object.keys(d.sensors).length ? `<div class="sensors">${sensorChips(d, d.platform)}</div>` : ''}
       <div class="ctl"><select data-siteroom="${esc(id)}">${roomOpts}</select><select data-siteprio="${esc(id)}">${prioOpts}</select>
         <button data-siteid="${esc(id)}">Identify</button>${url && id !== v.self ? `<a href="${esc(url)}/#site" style="font-size:13px">Open its dashboard</a>` : ''}</div>
     </div></div>`;
   }).join('') || '<p class="sub">No TVs yet.</p>';
+  renderSensors(v, devs, rooms, nameOf);
   $('#siteRooms').innerHTML = rooms.map(r => `<div class="pref"><div class="txt" style="flex:1">
       <input type="text" value="${esc(r.name)}" data-roomname="${esc(r.id)}" maxlength="30" style="width:100%;max-width:280px">
       <div>${rooms.filter(o => o.id !== r.id).map(o => `<label class="roomnext"><input type="checkbox" data-roomnext="${esc(r.id)}" value="${esc(o.id)}" ${(r.next || []).indexOf(o.id) >= 0 ? 'checked' : ''}> next to ${esc(o.name)}</label>`).join('')}</div>
@@ -1530,8 +1672,9 @@ function show(t) {
   if (t === 'homescreen') loadSettings();
   if (t === 'tvsettings') loadTvSettings();
   if (t === 'network') loadNetwork();
-  if (t === 'site') { loadSite(); loadPeers(); loadAuth(); loadDoor(); }
-  if (t === 'overview') loadWall();
+  if (t === 'site') { loadSite(); loadPeers(); loadAuth(); }
+  if (t === 'integrations') { loadInteg(); loadDoor(); }
+  if (t === 'overview') { loadWall(); loadRooms(); }
 }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => show(b.dataset.tab));
 
@@ -1689,8 +1832,10 @@ function applyFeatures(s) {
   $('#wakeRow').hidden = !webos;
   document.querySelector('nav [data-tab="tvsettings"]').hidden = !feat.tvSettings;
   document.querySelector('nav [data-tab="site"]').hidden = !feat.site || DEV !== 'local';
+  // Integrations: TVs that describe them (3.40 / 1.37 and later)
+  if (DEV === 'local') api('integrations').then(() => { document.querySelector('nav [data-tab="integrations"]').hidden = false; if (tab === 'integrations') loadInteg(); }).catch(() => {});
   if (DEV === 'local') setTimeout(loadMeshPicker, 300);   // after the TV list (Rokus) has loaded
-  if (tab === 'overview') loadWall();
+  if (tab === 'overview') { loadWall(); loadRooms(); }
   loadPcApp();   // CanvasFrame for Windows (Overview), once per page
   if (tab === 'site') loadSite();
   loadSyncLocks();   // grey out settings Sync controls (the Home screen tab may have loaded before features were known)
@@ -1864,41 +2009,127 @@ async function loadDoor() {
   if (document.activeElement !== $('#doorSize')) $('#doorSize').value = r.size || 'm';
   if (document.activeElement !== $('#doorSecs')) $('#doorSecs').value = String(r.secs || 45);
   if (document.activeElement !== $('#doorSecsOver')) $('#doorSecsOver').value = String(r.secsOver || 15);
-  $('#doorSum').textContent = r.configured ? '· ' + r.console + (r.apiKey ? ' · API key set' : ' · no API key') + (r.live ? ' · stream set' : '') : '· not set up yet';
+  const alerts = r.alerts || [];
+  $('#doorSum').textContent = r.configured ? '· ' + r.console + (r.apiKey ? ' · API key set' : ' · no API key') + ' · ' + alerts.length + ' alert' + (alerts.length === 1 ? '' : 's') : '· not set up yet';
   if (document.activeElement !== $('#doorConsole')) $('#doorConsole').value = r.console || '';
   $('#doorKeyState').textContent = r.apiKey ? '(set)' : '(not set)';
-  $('#doorLiveState').textContent = r.live ? '(set)' : '(not set)';
-  $('#doorPkgState').textContent = r.pkg ? '(set)' : '(not set)';
   if (!r.configured) $('#doorSetup').open = true;
-  $('#doorHook').hidden = !r.hookPath;
   doorHookBase = r.hookPath ? 'http://' + location.hostname + ':8080' + r.hookPath : '';
-  showDoorHook();
-  const kinds = r.kinds || ['ring', 'person', 'package', 'motion'];
-  document.querySelectorAll('#doorKinds input').forEach(i => { i.checked = kinds.includes(i.value); });
+  doorConsole = r.console || '';
+  doorAlertList = alerts;
+  // This TV's alerts (chips): every alert except the hidden ones.
+  const hide = r.hide || [];
+  $('#doorKinds').innerHTML = alerts.map(a => `<label><input type="checkbox" value="${esc(a.id)}" ${hide.includes(a.id) ? '' : 'checked'}><span>${esc(a.name)}</span></label>`).join('');
+  const pick = $('#doorTestPick'), was = pick.value;
+  pick.innerHTML = alerts.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('');
+  if (alerts.some(a => a.id === was)) pick.value = was;
+  $('#doorAlertsBox').hidden = !r.configured;
+  if (r.configured && !doorAlertsDirty) {
+    if (r.apiKey && !doorCams) { try { doorCams = (await api('doorbell/cameras')).cameras || []; } catch (e) { doorCams = []; } }
+    renderDoorAlerts(alerts);
+  }
+  const nameOf = id => (alerts.find(a => a.id === id) || {}).name || id;
   const ev = r.recent || [];
-  $('#doorRecent').textContent = ev.length ? 'Received here: ' + ev.slice(0, 5).map(e => e.kind + ' ' + new Date(e.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })).join(' · ')
+  $('#doorRecent').textContent = ev.length ? 'Received here: ' + ev.slice(0, 5).map(e => nameOf(e.kind) + ' ' + new Date(e.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })).join(' · ')
     : 'No webhook received on this TV yet.';
 }
-let doorHookBase = '', doorHookKind = 'ring';
-function showDoorHook() {
-  document.querySelectorAll('#doorHookPick button').forEach(b => b.classList.toggle('on', b.dataset.kind === doorHookKind));
-  $('#doorHookUrl').textContent = doorHookBase ? doorHookBase + '?kind=' + doorHookKind : '';
+// The alert editor: name, camera, stream, "repeats often", and each alert's own webhook address.
+let doorHookBase = '', doorAlertList = [], doorCams = null, doorAlertsDirty = false, doorConsole = '';
+function doorCamOpts(sel) {
+  return '<option value="">Default camera (a doorbell, else the first)</option>'
+    + (doorCams || []).map(c => `<option value="${esc(c.id)}" ${c.id === sel ? 'selected' : ''}>${esc(c.name || c.id)}${c.model ? ' · ' + esc(c.model) : ''}</option>`).join('')
+    + (sel && !(doorCams || []).some(c => c.id === sel) ? `<option value="${esc(sel)}" selected>Camera ${esc(sel.slice(0, 8))}…</option>` : '');
 }
-$('#doorHookPick').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { doorHookKind = b.dataset.kind; showDoorHook(); } });
-$('#doorHookCopy').addEventListener('click', async () => {
-  const t = $('#doorHookUrl').textContent;
-  if (!t) return;
-  try { await navigator.clipboard.writeText(t); }
-  catch (e) {   // older browsers / no clipboard permission: select it and copy the old way
-    const r = document.createRange(); r.selectNodeContents($('#doorHookUrl'));
-    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
-    try { document.execCommand('copy'); } catch (e2) { /* the text stays selected */ }
+function doorAlertHtml(a) {
+  const url = a.id && doorHookBase ? doorHookBase + '?kind=' + encodeURIComponent(a.id) : '';
+  return `<div class="doorAlert" data-id="${esc(a.id || '')}" data-own="${a.ownStream ? 1 : ''}" data-fallback="${!a.ownStream && a.stream ? 1 : ''}">
+      <div class="dar"><input type="text" class="daName" maxlength="40" value="${esc(a.name || '')}" placeholder="Name shown on the TVs, e.g. Someone at the Gate">
+        <select class="daCam" title="Camera for the snapshot and its name">${doorCamOpts(a.camera || '')}</select></div>
+      <div class="dar"><input type="text" class="daStream secret" placeholder="${a.stream ? 'Paste a new rtsps://… address to replace it' : 'Stream: paste the rtsps://… address'}">
+        <label class="daQuiet"><input type="checkbox" class="daQuietBox" ${a.quiet ? 'checked' : ''}> Repeats often</label></div>
+      <div class="daState">${doorStreamState(a.ownStream ? 'own' : a.stream ? 'fallback' : 'none')}</div>
+      <div class="dar">${url ? `<button type="button" class="daCopy">Copy webhook</button><code>${esc(url)}</code>` : '<span class="sub">Save to get the webhook address for this alert.</span>'}
+        <button type="button" class="daDel">Remove</button></div>
+    </div>`;
+}
+// The line under an alert's stream box: what is stored (masked), or what will happen when you save.
+function doorStreamState(st) {
+  const masked = 'rtsps://' + esc(doorConsole || 'console') + ':7441/••••••••';
+  if (st === 'own') return `<span class="ok">✓ Stream saved</span><code>${masked}</code><button type="button" class="daClear">Remove stream</button>`;
+  if (st === 'fallback') return `<span class="ok">✓ Uses the saved doorbell stream</span><code>${masked}</code><button type="button" class="daClear">Remove stream</button>`;
+  if (st === 'new') return '<span class="warn">New stream address: saved when you press Save alerts</span>';
+  if (st === 'clear') return '<span class="warn">Stream will be removed when you press Save alerts</span><button type="button" class="daUndo">Undo</button>';
+  return '<span class="none">No stream saved: the TVs show snapshots from the camera</span>';
+}
+function renderDoorAlerts(alerts) {
+  $('#doorAlerts').innerHTML = alerts.map(doorAlertHtml).join('') || '<p class="sub">No alerts yet: add one.</p>';
+  doorAlertsDirty = false;
+  $('#doorAlertNote').textContent = '';
+}
+function doorAlertRows() {
+  return [...document.querySelectorAll('#doorAlerts .doorAlert')].map(el => ({ id: el.dataset.id || undefined,
+    name: el.querySelector('.daName').value.trim(), camera: el.querySelector('.daCam').value,
+    stream: el.dataset.clear ? '-' : el.querySelector('.daStream').value.trim(), quiet: el.querySelector('.daQuietBox').checked }));
+}
+function doorDirty() { doorAlertsDirty = true; $('#doorAlertNote').textContent = 'Not saved yet'; }
+$('#doorAlerts').addEventListener('input', e => {
+  doorDirty();
+  const row = e.target.closest('.doorAlert');
+  if (row && e.target.classList.contains('daStream')) {
+    delete row.dataset.clear;
+    row.querySelector('.daState').innerHTML = doorStreamState(e.target.value.trim() ? 'new' : row.dataset.own ? 'own' : row.dataset.fallback ? 'fallback' : 'none');
   }
-  toast('Copied the ' + doorHookKind + ' webhook address');
 });
-$('#doorKinds').addEventListener('change', () => doorSave({ kinds: [...document.querySelectorAll('#doorKinds input:checked')].map(i => i.value) }, 'Saved'));
+$('#doorAlerts').addEventListener('change', doorDirty);
+$('#doorAlerts').addEventListener('click', async e => {
+  const row = e.target.closest('.doorAlert');
+  if (!row) return;
+  if (e.target.closest('.daDel')) { row.remove(); doorDirty(); return; }
+  if (e.target.closest('.daClear')) {
+    row.dataset.clear = '1';
+    row.querySelector('.daStream').value = '';
+    row.querySelector('.daState').innerHTML = doorStreamState('clear');
+    doorDirty();
+    return;
+  }
+  if (e.target.closest('.daUndo')) {
+    delete row.dataset.clear;
+    row.querySelector('.daState').innerHTML = doorStreamState(row.dataset.own ? 'own' : row.dataset.fallback ? 'fallback' : 'none');
+    return;
+  }
+  if (e.target.closest('.daCopy')) {
+    const code = row.querySelector('code'), t = code ? code.textContent : '';
+    if (!t) return;
+    try { await navigator.clipboard.writeText(t); }
+    catch (err) {   // older browsers / no clipboard permission: select it and copy the old way
+      const r = document.createRange(); r.selectNodeContents(code);
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      try { document.execCommand('copy'); } catch (e2) { /* the text stays selected */ }
+    }
+    toast('Copied the webhook address for ' + (row.querySelector('.daName').value.trim() || 'this alert'));
+  }
+});
+$('#doorAlertAdd').addEventListener('click', () => {
+  const box = $('#doorAlerts');
+  if (!box.querySelector('.doorAlert')) box.innerHTML = '';
+  box.insertAdjacentHTML('beforeend', doorAlertHtml({ name: '' }));
+  doorDirty();
+  const names = document.querySelectorAll('#doorAlerts .daName');
+  if (names.length) names[names.length - 1].focus();
+});
+$('#doorAlertSave').addEventListener('click', async () => {
+  const rows = doorAlertRows().filter(r => r.name);
+  if (!rows.length) { toast('Keep at least one alert, with a name'); return; }
+  try {
+    await api('doorbell', { alerts: rows });
+    doorAlertsDirty = false;
+    toast('Alerts saved: passing them to your other TVs');
+  } catch (e) { toast(e.message); return; }
+  loadDoor();
+});
+$('#doorKinds').addEventListener('change', () => doorSave({ hide: [...document.querySelectorAll('#doorKinds input:not(:checked)')].map(i => i.value) }, 'Saved'));
 async function doorSave(o, msg) { try { await api('doorbell', o); if (msg) toast(msg); } catch (e) { toast(e.message); } loadDoor(); }
-$('#doorShow').addEventListener('change', e => doorSave({ show: e.target.checked }, e.target.checked ? 'Doorbell alerts on for this TV' : 'Doorbell alerts off for this TV'));
+$('#doorShow').addEventListener('change', e => doorSave({ show: e.target.checked }, e.target.checked ? 'Protect alerts on for this TV' : 'Protect alerts off for this TV'));
 $('#doorOver').addEventListener('change', e => doorSave({ over: e.target.checked }, 'Saved'));
 $('#doorSecs').addEventListener('change', e => doorSave({ secs: +e.target.value }, 'Saved'));
 $('#doorSecsOver').addEventListener('change', e => doorSave({ secsOver: +e.target.value }, 'Saved'));
@@ -1907,18 +2138,300 @@ $('#doorSize').addEventListener('change', e => doorSave({ size: e.target.value }
 $('#doorForm').addEventListener('submit', async ev => {
   ev.preventDefault();
   const o = { console: $('#doorConsole').value.trim() };
-  for (const [id, k] of [['#doorKey', 'apiKey'], ['#doorLive', 'live'], ['#doorPkg', 'pkg']]) { const v = $(id).value.trim(); if (v) o[k] = v; }
-  await doorSave(o, 'Doorbell setup saved: passing it to your other TVs');
-  ['#doorKey', '#doorLive', '#doorPkg'].forEach(id => { $(id).value = ''; });
+  const key = $('#doorKey').value.trim();
+  if (key) o.apiKey = key;
+  doorCams = null;   // a new key or console: list the cameras again
+  await doorSave(o, 'Protect setup saved: passing it to your other TVs');
+  $('#doorKey').value = '';
 });
-$('#doorRemove').addEventListener('click', ev => { ev.preventDefault(); if (confirm('Remove the doorbell setup from all your TVs?')) doorSave({ remove: true }, 'Removed'); });
+$('#doorRemove').addEventListener('click', ev => { ev.preventDefault(); if (confirm('Remove the Protect setup from all your TVs?')) doorSave({ remove: true }, 'Removed'); });
 for (const [id, here] of [['#doorTestAll', false], ['#doorTestHere', true]]) $(id).addEventListener('click', async ev => {
   ev.stopPropagation();
   try {
-    const r = await api('doorbell/test', { kind: doorHookKind, here });
-    toast((here ? 'Test (' + doorHookKind + ') on this TV' : 'Test (' + doorHookKind + ') on all TVs') + (r.snapshotError ? ' · snapshot failed: ' + r.snapshotError : r.snapshot ? ' · snapshot OK' : ''));
+    const kind = $('#doorTestPick').value, name = (doorAlertList.find(a => a.id === kind) || {}).name || kind;
+    const r = await api('doorbell/test', { kind, here });
+    toast('Test (' + name + ') on ' + (here ? 'this TV' : 'all TVs') + (r.snapshotError ? ' · snapshot failed: ' + r.snapshotError : r.snapshot ? ' · snapshot OK' : ''));
   } catch (e) { toast(e.message); }
 });
+
+// Integrations: each TV describes its integrations (GET /api/integrations); drawn generically.
+let integTimer = null;
+async function loadInteg() {
+  clearTimeout(integTimer);
+  if (DEV !== 'local') return;
+  let r;
+  try { r = await api('integrations'); } catch (e) { $('#integList').innerHTML = `<p class="sub">${esc(e.message)}</p>`; return; }
+  renderInteg(r.integrations || []);
+  if (tab === 'integrations') integTimer = setTimeout(loadInteg, 15000);
+}
+function renderInteg(list) {
+  if (document.activeElement && document.activeElement.closest && document.activeElement.closest('#integList input, #integList select')) return;
+  const door = $('#doorBlock');
+  if (door.parentElement && door.parentElement.closest('#integList')) $('#integrations').appendChild(door);   // keep it while redrawing
+  if ($('#sensBlock').parentElement.closest('#integList')) $('#integrations').appendChild($('#sensBlock'));
+  $('#integList').innerHTML = list.map(g => {
+    const st = g.status || {};
+    const sets = (g.settings || []).map(x => x.type === 'switch'
+      ? `<div class="pref"><div class="txt"><b>${esc(x.label)}</b>${x.help ? `<span>${esc(x.help)}</span>` : ''}</div>
+          <label class="switch"><input type="checkbox" data-iid="${esc(g.id)}" data-ikey="${esc(x.key)}" ${x.value ? 'checked' : ''}><span></span></label></div>` : '').join('');
+    const reads = (g.readings || []).length ? `<div class="iread">${g.readings.map(x => `<span>${esc(x.label)}</span><span>${esc(x.text)}</span>`).join('')}</div>` : '';
+    const info = g.info ? `<pre>POST ${esc(location.origin + g.info.endpoint)}\nX-CanvasFrame: 1\nX-CanvasFrame-Key: cfk_…\n\n${esc(g.info.example)}</pre>` : '';
+    const link = g.link ? `<div class="row" style="margin-top:10px"><button data-goto="${esc(g.link.tab)}" style="flex:none">${esc(g.link.label)}</button></div>` : '';
+    return `<div class="card integ" data-integ="${esc(g.id)}">
+      <div class="ihead"><b>${esc(g.name)}</b><span class="ist ${esc(st.state || '')}">${esc(st.text || '')}</span></div>
+      <p class="sub" style="margin:6px 0 4px">${esc(g.desc || '')}</p>${sets}${reads}${info}${link}
+      ${g.panel ? `<div data-panelslot="${esc(g.panel)}" style="margin-top:12px"></div>` : ''}</div>`;
+  }).join('') || '<p class="sub">No integrations on this TV.</p>';
+  const slot = document.querySelector('[data-panelslot="protect"]');
+  if (slot) slot.appendChild(door);
+  const sslot = document.querySelector('[data-panelslot="sensors"]');
+  if (sslot) { sslot.appendChild($('#sensBlock')); $('#sensBlock').hidden = false; loadSensors(); }
+}
+$('#integList').addEventListener('change', async e => {
+  const i = e.target.closest('[data-ikey]');
+  if (!i) return;
+  try { const r = await api('integrations', { id: i.dataset.iid, set: { [i.dataset.ikey]: i.checked } }); toast('Saved'); i.blur(); renderInteg(r.integrations || []); }
+  catch (err) { toast(err.message); i.checked = !i.checked; }
+});
+document.addEventListener('click', e => {
+  const g = e.target.closest('[data-goto]');
+  if (!g) return;
+  e.preventDefault();
+  show(g.dataset.goto);
+});
+
+// Bluetooth sensors panel (Integrations): your sensors (site items sensor:<id>, editable here) and "Find sensors"
+// (site command blescan; every scanning TV publishes scan:<id> {until, found}).
+let sensTimer = null, sensAdding = null, sensEditing = null, sensAsked = 0;   // sensAsked: when this browser started a search
+async function loadSensors(force) {
+  clearTimeout(sensTimer);
+  let v, rooms;
+  try { [v, rooms] = await Promise.all([api('site'), api('rooms').catch(() => ({ climate: [] }))]); } catch (e) { return; }
+  renderSensors(v, rooms, force);
+  const searching = Object.keys(v.items).some(k => k.startsWith('scan:') && v.items[k].d && v.items[k].d.until > v.now) || Date.now() - sensAsked < 25000;
+  if (tab === 'integrations') sensTimer = setTimeout(loadSensors, searching ? 2000 : 15000);
+}
+function sensPlaces(v) {
+  const items = v.items, rooms = Object.keys(items).filter(k => k.startsWith('room:') && items[k].d && !items[k].x)
+    .map(k => ({ id: k.slice(5), name: items[k].d.name || 'Room' })).sort((a, b) => a.name.localeCompare(b.name));
+  const wheres = [...new Set(Object.keys(items).filter(k => k.startsWith('sensor:') && items[k].d && items[k].d.where).map(k => items[k].d.where))];
+  return { rooms, wheres };
+}
+function sensPlaceSelect(v, d) {
+  const { rooms, wheres } = sensPlaces(v), cur = d.room ? 'room:' + d.room : d.where ? 'where:' + d.where : '';
+  return `<select class="splace"><option value="">No place</option>${rooms.map(r => `<option value="room:${esc(r.id)}" ${cur === 'room:' + r.id ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}
+    ${wheres.map(w => `<option value="where:${esc(w)}" ${cur === 'where:' + w ? 'selected' : ''}>${esc(w)}</option>`).join('')}<option value="__other">Other place…</option></select>
+    <input type="text" class="swhere" maxlength="30" placeholder="Place, e.g. Garage" hidden>`;
+}
+function sensPlaceValue(row) {
+  const sel = row.querySelector('.splace').value, other = row.querySelector('.swhere').value.trim();
+  if (sel === '__other') return other ? { where: other } : {};
+  if (sel.startsWith('room:')) return { room: sel.slice(5) };
+  if (sel.startsWith('where:')) return { where: sel.slice(6) };
+  return {};
+}
+function renderSensors(v, roomsData, force) {
+  if (!force && document.activeElement && document.activeElement.closest && document.activeElement.closest('#sensBlock input, #sensBlock select')) return;
+  if (!force && (sensEditing || sensAdding) && document.querySelector('#sensBlock .sname')) return;   // a form is open: leave it alone
+  const items = v.items, now = v.now, it = k => { const x = items[k]; return x && !x.x ? x.d : null; };
+  const devName = d => (it('dev:' + d) || {}).name || 'TV';
+  const roomName = d => { const rid = (it('place:' + d) || {}).room, r = rid && it('room:' + rid); return r ? r.name : ''; };
+  const F = (roomsData.units || 'F') !== 'C', temp = t => t == null ? '' : (F ? t * 9 / 5 + 32 : t).toFixed(1) + (F ? ' °F' : ' °C');
+  const readTxt = r => [temp(r.t), r.h != null ? Math.round(r.h) + ' %' : '', r.light != null ? 'light ' + r.light + (r.light > 20 ? ' %' : '') : '',
+    r.co2 != null ? r.co2 + ' ppm CO₂' : '', r.bat != null ? 'battery ' + r.bat + ' %' : ''].filter(Boolean).join(' · ');
+  const mine = Object.keys(items).filter(k => k.startsWith('sensor:') && it(k)).map(k => Object.assign({ id: k.slice(7) }, it(k)))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const clim = {};
+  for (const c of roomsData.climate || []) if (c.key.startsWith('switchbot/')) clim[c.key.slice(10)] = c;
+  const placeName = d => { if (d.room) { const r = it('room:' + d.room); return r ? r.name : ''; } return d.where || ''; };
+  $('#sensMine').innerHTML = mine.length ? '<b>Your sensors</b>' + mine.map(d => {
+    const c = clim[d.id], live = c && c.fresh;
+    const top = sensEditing === d.id
+      ? `<div class="srow"><input type="text" class="sname" maxlength="40" value="${esc(d.name || '')}" placeholder="Name">${sensPlaceSelect(v, d)}
+          <button type="button" class="ssaveedit">Save</button><button type="button" class="scanceledit">Cancel</button></div>`
+      : `<div class="srow"><b style="flex:1 1 auto">${esc(d.name || 'Sensor')}${placeName(d) ? ` <span class="sheard">· ${esc(placeName(d))}</span>` : ' <span class="sheard">· no place</span>'}</b>
+          <button type="button" class="sedit">Edit</button><button type="button" class="sdel">Remove</button></div>`;
+    return `<div class="sens" data-sid="${esc(d.id)}">${top}
+      <div class="srow"><span class="sread">${live ? esc(readTxt({ t: c.t, h: c.h, light: c.light, co2: c.co2, bat: c.bat })) : 'No reading in the last 10 minutes'}</span>
+      <span class="sheard">${esc((d.vendor || 'SwitchBot') + ' ' + (d.kind || ''))} · ${esc(d.id.slice(-4).toUpperCase())}${live && c.dev ? ' · heard best at ' + esc(devName(c.dev)) : ''}</span></div></div>`;
+  }).join('') : '<p class="sub" style="margin:4px 0">No sensors added yet. Press Find sensors to see what your TVs can hear.</p>';
+  // Found: merge every TV's scan results by sensor.
+  const found = {};
+  let until = 0;
+  for (const k of Object.keys(items)) if (k.startsWith('scan:') && it(k)) {
+    const d = it(k), dev = k.slice(5);
+    if (now - d.until > 120000) continue;   // results stay up to 2 minutes after a search
+    until = Math.max(until, d.until);
+    for (const f of d.found || []) {
+      const e = found[f.id] = found[f.id] || { id: f.id, vendor: f.vendor, kind: f.kind, r: f, at: 0, by: {} };
+      if (f.at > e.at) { e.r = f; e.at = f.at; }
+      e.by[dev] = { rssi: f.rssi, at: f.at };
+    }
+  }
+  const searching = until > now, starting = !searching && Date.now() - sensAsked < 25000;
+  $('#sensFind').disabled = searching || starting;
+  $('#sensFindNote').textContent = searching ? `Searching… ${Math.ceil((until - now) / 1000)} s left. Two that look alike? Hold one next to a TV: its row lights up.`
+    : starting ? 'Starting the search on your TVs…' : until ? 'Search finished.' : '';
+  const list = Object.values(found).sort((a, b) => Math.max(...Object.values(b.by).map(x => x.rssi)) - Math.max(...Object.values(a.by).map(x => x.rssi)));
+  $('#sensFound').innerHTML = list.length ? '<b>Found nearby</b>' + list.map(f => {
+    const tvs = Object.keys(f.by).sort((a, b) => f.by[b].rssi - f.by[a].rssi);
+    const best = tvs[0], near = f.by[best].rssi >= -50 && now - f.by[best].at < 10000;
+    const added = it('sensor:' + f.id);
+    const suggest = (f.kind || 'Sensor') + (roomName(best) ? ' · ' + roomName(best) : '');
+    const form = sensAdding === f.id ? `<div class="srow"><input type="text" class="sname" maxlength="40" value="${esc(suggest)}">${sensPlaceSelect(v, { room: (it('place:' + best) || {}).room })}
+      <button type="button" class="ssave">Add</button><button type="button" class="scancel">Cancel</button></div>` : '';
+    return `<div class="sens${near ? ' near' : ''}" data-fid="${esc(f.id)}" data-kind="${esc(f.kind || '')}" data-vendor="${esc(f.vendor || '')}">
+      <div class="srow"><b style="flex:1 1 auto">${esc((f.vendor || '') + ' ' + (f.kind || ''))} · ${esc(f.id.slice(-4).toUpperCase())}</b>
+        ${near ? `<span class="near-tag">● Next to ${esc(devName(best))}</span>` : ''}
+        ${added ? `<span class="sheard">Added as ${esc(added.name)}</span><button type="button" class="sgoedit" data-id="${esc(f.id)}">Edit</button>` : sensAdding === f.id ? '' : '<button type="button" class="sadd">Add</button>'}</div>
+      <div class="srow"><span class="sread">${esc(readTxt(f.r))}</span><span class="sheard">${tvs.map(d => esc(devName(d)) + ' ' + f.by[d].rssi + ' dBm').join(' · ')}</span></div>${form}</div>`;
+  }).join('') : searching ? '<p class="sub">Listening…</p>' : '';
+}
+$('#sensFind').addEventListener('click', async () => {
+  sensAsked = Date.now();
+  try { await api('site', { blescan: 45 }); toast('Searching for 45 seconds on every TV that can listen'); } catch (e) { sensAsked = 0; toast(e.message); }
+  loadSensors();
+});
+$('#sensBlock').addEventListener('change', async e => {
+  const row = e.target.closest('.sens');
+  if (!row) return;
+  if (e.target.classList.contains('splace')) row.querySelector('.swhere').hidden = e.target.value !== '__other';
+  if (e.target.classList.contains('splace') && e.target.value === '__other') row.querySelector('.swhere').focus();
+});
+$('#sensBlock').addEventListener('click', async e => {
+  const row = e.target.closest('.sens');
+  if (!row) return;
+  if (e.target.closest('.sadd')) { sensAdding = row.dataset.fid; document.activeElement && document.activeElement.blur(); loadSensors(true); return; }
+  if (e.target.closest('.sedit') || e.target.closest('.sgoedit')) {
+    sensEditing = row.dataset.sid || e.target.closest('.sgoedit').dataset.id;
+    document.activeElement && document.activeElement.blur();
+    await loadSensors(true);
+    const er = document.querySelector(`#sensMine .sens[data-sid="${CSS.escape(sensEditing)}"]`);
+    if (er) { er.scrollIntoView({ block: 'center', behavior: 'smooth' }); er.querySelector('.sname').focus(); }
+    return;
+  }
+  if (e.target.closest('.scanceledit')) { sensEditing = null; document.activeElement && document.activeElement.blur(); loadSensors(true); return; }
+  if (e.target.closest('.ssaveedit')) {
+    const v = await api('site'), cur = (v.items['sensor:' + row.dataset.sid] || {}).d || {};
+    const name = row.querySelector('.sname').value.trim();
+    if (!name) { toast('Give it a name'); return; }
+    const d = Object.assign({ vendor: cur.vendor, kind: cur.kind, added: cur.added, name }, sensPlaceValue(row));
+    try { await api('site', { set: { ['sensor:' + row.dataset.sid]: d } }); sensEditing = null; toast('Saved: shared with your TVs'); } catch (err) { toast(err.message); return; }
+    document.activeElement && document.activeElement.blur();
+    loadSensors(true);
+    return;
+  }
+  if (e.target.closest('.scancel')) { sensAdding = null; document.activeElement && document.activeElement.blur(); loadSensors(true); return; }
+  if (e.target.closest('.ssave')) {
+    const name = row.querySelector('.sname').value.trim();
+    if (!name) { toast('Give it a name'); return; }
+    const d = Object.assign({ name, vendor: row.dataset.vendor || 'SwitchBot', kind: row.dataset.kind || '', added: Date.now() }, sensPlaceValue(row));
+    try { await api('site', { set: { ['sensor:' + row.dataset.fid]: d } }); sensAdding = null; toast('Added ' + name + ': your TVs record it from now on'); } catch (err) { toast(err.message); }
+    document.activeElement && document.activeElement.blur();
+    loadSensors(true);
+    return;
+  }
+  if (e.target.closest('.sdel')) {
+    const nm = row.querySelector('.sname'), name = nm ? nm.value : row.querySelector('b').firstChild.textContent;
+    if (!confirm('Remove ' + name + '? Its history goes too; you can add it again later.')) return;
+    try { await api('site', { del: ['sensor:' + row.dataset.sid] }); toast('Removed'); } catch (err) { toast(err.message); }
+    loadSensors();
+  }
+});
+
+// Rooms (Overview): presence now + 24 h timeline per room, climate charts. GET /api/rooms + the site (rooms, places, signals).
+let roomsTimer = null;
+async function loadRooms() {
+  clearTimeout(roomsTimer);
+  if (DEV !== 'local') return;
+  let r;
+  try { r = await api('rooms'); } catch (e) { return; }   // an older TV: no Rooms card
+  let v = siteData;
+  if (!v) { try { v = await api('site'); } catch (e) { return; } }
+  renderRooms(r, v);
+  if (tab === 'overview') roomsTimer = setTimeout(loadRooms, 30000);
+}
+function renderRooms(r, v) {
+  const items = v.items || {}, it = k => { const x = items[k]; return x && !x.x ? x.d : null; };
+  const rooms = Object.keys(items).filter(k => k.startsWith('room:') && it(k)).map(k => ({ id: k.slice(5), name: it(k).name || 'Room' }))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const roomOf = dev => ((it('place:' + dev) || {}).room) || '';
+  const devName = dev => ((it('dev:' + dev) || {}).name) || 'TV';
+  const climRoom = c => c.room || (c.where ? 'where:' + c.where : roomOf(c.dev));
+  for (const w of [...new Set(r.climate.filter(c => !c.room && c.where).map(c => c.where))]) rooms.push({ id: 'where:' + w, name: w, place: true });
+  const now = r.now, span = 24 * 3600000, from = now - span;
+  const F = r.units !== 'C', temp = t => t == null ? '' : (F ? (t * 9 / 5 + 32) : t).toFixed(1) + (F ? ' °F' : ' °C');
+  const clock = ms => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const agoTxt = ms => { const m = Math.round((now - ms) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago'; };
+  // Presence intervals per room from 'p' events (someone -> nobody), activity ticks from 'a' events.
+  const evs = r.ev || [];
+  const rows = rooms.map(room => {
+    const devs = Object.keys(items).filter(k => k.startsWith('dev:') && it(k)).map(k => k.slice(4)).filter(d => roomOf(d) === room.id);
+    const sigRoom = (s, dev) => s.room || roomOf(dev);
+    const spans = [], open = {};
+    for (const e of evs) {
+      const [at, key, type, val, dev] = e;
+      if (type !== 'p') continue;
+      let sroom = roomOf(dev);
+      const sig = ((it('sig:' + dev) || {}).list || []).find(s => s.key === key);
+      if (sig) sroom = sigRoom(sig, dev);
+      if (sroom !== room.id) continue;
+      if (val === 'someone') { if (open[key] == null) open[key] = at; }
+      else if (open[key] != null) { spans.push([open[key], at]); delete open[key]; }
+    }
+    for (const k of Object.keys(open)) spans.push([open[k], now]);
+    const ticks = evs.filter(e => e[2] === 'a' && devs.includes(e[4])).map(e => [e[0], e[3], e[4]]);
+    // Now: someone here (a presence signal in this room says so), else the last activity / presence.
+    let here = false, lastSeen = 0;
+    for (const k of Object.keys(items)) if (k.startsWith('sig:') && it(k)) {
+      const dev = k.slice(4);
+      for (const s of it(k).list || []) if (s.presence && sigRoom(s, dev) === room.id && now - (s.at || 0) < 10 * 60000) {
+        if (s.presence === 'someone') here = true;
+      }
+    }
+    for (const sp of spans) lastSeen = Math.max(lastSeen, sp[1]);
+    for (const t of ticks) lastSeen = Math.max(lastSeen, t[0]);
+    for (const d of devs) { const a = it('act:' + d); if (a && a.at) lastSeen = Math.max(lastSeen, a.at); }
+    const climHere = r.climate.filter(c => climRoom(c) === room.id && c.fresh);
+    const climTxt = climHere.map(c => [temp(c.t), c.h != null ? Math.round(c.h) + ' %' : ''].filter(Boolean).join(' · ')).filter(Boolean)[0] || '';
+    const nowTxt = room.place ? '' : here ? '<span class="here">● Someone here</span>' : lastSeen ? 'Last activity ' + agoTxt(lastSeen) : devs.length ? 'No activity in the last 48 h' : 'No TVs in this room';
+    const x = t => ((Math.max(from, t) - from) / span * 1440).toFixed(1);
+    const svg = room.place ? '' : `<svg class="tl" viewBox="0 0 1440 16" preserveAspectRatio="none" role="img" aria-label="${esc(room.name)} in the last 24 hours">
+      ${spans.filter(sp => sp[1] > from).map(sp => `<rect x="${x(sp[0])}" y="2" width="${Math.max(2, x(sp[1]) - x(sp[0]))}" height="12" rx="2" fill="var(--s4)"><title>Someone there ${clock(Math.max(from, sp[0]))} – ${sp[1] >= now ? 'now' : clock(sp[1])}</title></rect>`).join('')}
+      ${ticks.filter(t => t[0] > from).map(t => `<rect x="${(x(t[0]) - 1).toFixed(1)}" y="0" width="3" height="16" fill="var(--text)" opacity=".8"><title>${esc(devName(t[2]))} used at ${clock(t[0])}${t[1] ? ' (' + esc(t[1]) + ')' : ''}</title></rect>`).join('')}
+    </svg>`;
+    return `<div class="roomrow"><div class="rtop"><b>${esc(room.name)}</b><span class="rnow">${nowTxt}</span><span class="rclim">${esc(climTxt)}</span></div>${svg}</div>`;
+  });
+  $('#roomsBlock').hidden = !rooms.length;
+  $('#roomsList').innerHTML = rows.join('');
+  $('#roomsAxis').innerHTML = [0, 6, 12, 18, 24].map(h => `<span>${h === 24 ? 'now' : clock(from + h * 3600000)}</span>`).join('');
+  // Climate charts: temperature and humidity as two charts (one axis each), up to 4 sensors, colour by sensor (fixed order).
+  const sensors = r.climate.filter(c => (c.hist || []).some(p => p[0] > from)).slice(0, 4);
+  const rn = c => { const id = climRoom(c), m = rooms.find(x => x.id === id); return m ? m.name : ''; };
+  const label = c => (rn(c) ? rn(c) + ' · ' : '') + c.name;
+  const chart = (title, idx, fmt) => {
+    const series = sensors.map((c, i) => ({ c, i, pts: (c.hist || []).filter(p => p[0] > from && p[idx] != null).map(p => [p[0], idx === 1 && F ? p[1] * 9 / 5 + 32 : p[idx]]) })).filter(s => s.pts.length > 1);
+    if (!series.length) return '';
+    let lo = Infinity, hi = -Infinity;
+    for (const s of series) for (const p of s.pts) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); }
+    const pad = Math.max(1, (hi - lo) * 0.15); lo = Math.floor(lo - pad); hi = Math.ceil(hi + pad);
+    const W = Math.max(300, Math.round($('#roomsList').clientWidth || 800)), H = 150, L = 40, R = W < 600 ? 96 : 150, T = 8, B = 18;
+    const X = t => L + (t - from) / span * (W - L - R), Y = val => T + (1 - (val - lo) / (hi - lo)) * (H - T - B);
+    const grid = [lo, (lo + hi) / 2, hi].map(g => `<line x1="${L}" x2="${W - R}" y1="${Y(g).toFixed(1)}" y2="${Y(g).toFixed(1)}" stroke="var(--line)"/><text x="${L - 6}" y="${(Y(g) + 4).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--muted)">${fmt(g, true)}</text>`).join('');
+    const lines = series.map(s => `<polyline fill="none" stroke="var(--s${s.i + 1})" stroke-width="2" stroke-linejoin="round" points="${s.pts.map(p => X(p[0]).toFixed(1) + ',' + Y(p[1]).toFixed(1)).join(' ')}"/>`).join('');
+    const ends = series.map(s => { const p = s.pts[s.pts.length - 1]; return `<circle cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="4" fill="var(--s${s.i + 1})" stroke="var(--bg)" stroke-width="2"/><text x="${(X(p[0]) + 8).toFixed(1)}" y="${(Y(p[1]) + 4).toFixed(1)}" font-size="12" fill="var(--text)">${fmt(p[1])} ${esc(rn(s.c) || s.c.name)}</text>`; }).join('');
+    // Hover: one hit area per hour with every sensor's value then.
+    const hits = Array.from({ length: 24 }, (_, h) => {
+      const t0 = from + h * 3600000, t1 = t0 + 3600000;
+      const vals = series.map(s => { const p = s.pts.filter(q => q[0] >= t0 && q[0] < t1).pop(); return p ? label(s.c) + ': ' + fmt(p[1]) : null; }).filter(Boolean);
+      return `<rect x="${X(t0).toFixed(1)}" y="${T}" width="${(X(t1) - X(t0)).toFixed(1)}" height="${H - T - B}" fill="transparent"><title>${clock(t0)} – ${clock(t1)}\n${esc(vals.join('\n') || 'no reading')}</title></rect>`;
+    }).join('');
+    const legend = series.map(s => `<span><i style="background:var(--s${s.i + 1})"></i>${esc(label(s.c))}</span>`).join('');
+    return `<div class="chart"><h3>${esc(title)}</h3><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(title)}">${grid}${lines}${ends}${hits}</svg><div class="legend">${legend}</div></div>`;
+  };
+  $('#climCharts').innerHTML = sensors.length ? chart('Temperature, last 24 hours', 1, (n, axis) => n.toFixed(axis ? 0 : 1) + (F ? '°F' : '°C'))
+    + chart('Humidity, last 24 hours', 2, n => Math.round(n) + ' %') : '';
+}
 
 // Inputs
 async function loadInputs() {
@@ -2515,6 +3028,19 @@ const WMO = {0:['☀️','Clear','🌙'],1:['🌤️','Mostly clear','🌙'],2:[
   61:['🌧️','Light rain'],63:['🌧️','Rain'],65:['🌧️','Heavy rain'],66:['🌧️','Freezing rain'],67:['🌧️','Freezing rain'],
   71:['🌨️','Light snow'],73:['🌨️','Snow'],75:['❄️','Heavy snow'],77:['🌨️','Snow grains'],80:['🌦️','Showers'],81:['🌦️','Showers'],
   82:['⛈️','Violent showers'],85:['🌨️','Snow showers'],86:['🌨️','Snow showers'],95:['⛈️','Thunderstorm'],96:['⛈️','Storm with hail'],99:['⛈️','Storm with hail']};
+// Presence radar (Hisense): one line about what it sees now.
+function radarText(s) {
+  if (!('radar' in s)) return '';
+  if (!s.radar) return 'Off.';
+  const r = s.radar_now;
+  if (!r) return 'Starting…';
+  const why = { artmode: 'Hisense art mode is on screen and is using the radar itself.',
+    paused: "Paused: the screen is off (or it is the 9 AM hour, when CanvasFrame steps aside for art mode's daily check).",
+    starting: 'Connecting to the radar…' };
+  let t = r.state === 'someone' ? 'Someone is in the room' : r.state === 'nobody' ? 'Nobody in the room' : 'No reading yet';
+  if (r.since && r.state !== 'unknown') t += ' since ' + new Date(r.since).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return t + '.' + (why[r.mode] ? ' ' + why[r.mode] : '');
+}
 function renderSettings(s) {
   // Settings only some TVs have: show the row only when this TV reports the setting.
   document.querySelectorAll('[data-needs]').forEach(el => { el.hidden = !(el.dataset.needs in s); });
@@ -2522,6 +3048,7 @@ function renderSettings(s) {
     const v = s[el.dataset.set];
     if (el.type === 'checkbox') el.checked = !!v; else el.value = String(v);
   });
+  if ($('#radarNow')) $('#radarNow').textContent = radarText(s);
   document.querySelectorAll('[data-seg]').forEach(seg =>
     seg.querySelectorAll('button').forEach(b => b.classList.toggle('on', String(s[seg.dataset.seg]) === b.dataset.v)));
   $('#placeNow').textContent = s.weather_place || 'Not set — search for your town below';

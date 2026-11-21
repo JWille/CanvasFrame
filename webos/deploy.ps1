@@ -11,6 +11,11 @@ if (-not $Tv) {
     if (-not $Tv) { throw "Give the TV's address: ./webos/deploy.ps1 -Tv <address>" }
 }
 
+# Gate: the dashboard / home page scripts must parse (tools/dash-check, offline part).
+if (Get-Command node -ErrorAction SilentlyContinue) {
+    node (Join-Path (Split-Path -Parent $here) "tools/dash-check/dash-check.mjs") --static
+    if ($LASTEXITCODE) { throw "dashboard script check failed (see above)" }
+}
 python "$here/build-ipk.py"
 if ($LASTEXITCODE) { throw "build failed" }
 $ver = (Get-Content "$here/app/appinfo.json" -Raw | ConvertFrom-Json).version

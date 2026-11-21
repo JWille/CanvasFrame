@@ -314,6 +314,7 @@ public final class Config {
         if (in.has(ART_MAT)) { String m = in.getString(ART_MAT); e.putString(ART_MAT, "white".equals(m) || "black".equals(m) ? m : "none"); }
         if (in.has(ART_DIM)) e.putInt(ART_DIM, Math.max(0, Math.min(90, in.getInt(ART_DIM))));
         if (in.has(UI_SOUNDS)) e.putBoolean(UI_SOUNDS, in.getBoolean(UI_SOUNDS));
+        if (in.has(Radar.PREF)) e.putBoolean(Radar.PREF, in.getBoolean(Radar.PREF));
         if (in.has(MESH_PHOTOS)) e.putBoolean(MESH_PHOTOS, in.getBoolean(MESH_PHOTOS));
         if (in.has(LIGHT_DIM)) e.putBoolean(LIGHT_DIM, in.getBoolean(LIGHT_DIM));
         if (in.has(LIGHT_SRC)) e.putString(LIGHT_SRC, in.optString(LIGHT_SRC, "auto").replaceAll("[^A-Za-z0-9_-]", "").isEmpty() ? "auto"

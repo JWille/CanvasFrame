@@ -48,6 +48,7 @@ function create(dataDir, sync, cfg, log, me) {
   const newer = (a, b) => !b || a.t > b.t || (a.t === b.t && String(a.by) > String(b.by));
   const done = new Set();   // commands already run here (by key)
   const peerState = {};     // peer id -> { ok, at, error }
+  let fastUntil = 0;         // sync every 3 s until then (a sensor search)
   let handlers = null;      // set by start(): { envNow, onCommand, onChange }
   let lastAct = 0;
 
@@ -65,9 +66,9 @@ function create(dataDir, sync, cfg, log, me) {
     let changed = false, authChanged = false, meshChanged = false;
     for (const k of Object.keys(items || {})) {
       const it = items[k];
-      if (!it || typeof it.t !== 'number' || !/^(dev|env|act|pics|place|room|opt|auth|sso|photo|tag|set|cmd):[A-Za-z0-9_-]{1,40}$/.test(k)) continue;
+      if (!it || typeof it.t !== 'number' || !/^(dev|env|act|pics|sig|scan|sensor|place|room|opt|auth|sso|photo|tag|set|cmd):[A-Za-z0-9_-]{1,40}$/.test(k)) continue;
       if ((k.startsWith('auth:') || k.startsWith('sso:') || k === 'set:cal' || k === 'set:door') && !trusted) continue;   // secrets / private links only from another TV's key
-      if (/^(dev|env|act|pics):/.test(k) && k.slice(k.indexOf(':') + 1) === id) continue;              // nobody else speaks for this TV
+      if (/^(dev|env|act|pics|sig|scan):/.test(k) && k.slice(k.indexOf(':') + 1) === id) continue;              // nobody else speaks for this TV
       if (newer(it, doc.items[k])) {
         if ((k.startsWith('auth:') || k.startsWith('sso:')) && !it.x && !(it.d && it.d.secret)) continue;   // a copy without the secret: ignore
         if (k === 'set:cal' && !it.x && !(it.d && Array.isArray(it.d.calendars))) continue;   // a stripped copy: ignore
@@ -274,7 +275,9 @@ function create(dataDir, sync, cfg, log, me) {
       }
       if (items['set:door'] && items['set:door'].d) {   // doorbell: API key, stream tokens, webhook token are TV-to-TV only
         const d = items['set:door'].d;
-        items['set:door'] = Object.assign({}, items['set:door'], { d: { console: d.console, apiKey: !!d.apiKey, live: !!d.live, pkg: !!d.pkg } });
+        const bd = { console: d.console, apiKey: !!d.apiKey, live: !!d.live, pkg: !!d.pkg };
+        if (Array.isArray(d.alerts)) bd.alerts = d.alerts.map(a => ({ id: a.id, name: a.name, camera: a.camera || '', quiet: !!a.quiet, stream: !!a.stream }));   // no stream tokens
+        items['set:door'] = Object.assign({}, items['set:door'], { d: bd });
       }
       for (const k of Object.keys(items)) if (k.startsWith('sso:')) {   // the mesh's sign-in pass secret: TV-to-TV only
         const it = items[k];
@@ -295,18 +298,38 @@ function create(dataDir, sync, cfg, log, me) {
     id,
     view,
     merge,
+    /** This TV's signals (lib/signals.js): sig:<id> {list}, only written when they changed; push = tell the others now. */
+    /** Sync every few seconds until `until` (a sensor search: other TVs' scan results arrive quickly). */
+    fast(until) { if (until > fastUntil) fastUntil = until; },
+    /** This TV's sensor-search results: scan:<id> {until, found:[...]}, pushed at once. */
+    scanResults(found, until) {
+      put('scan:' + id, { until, found });
+      if (handlers) round(handlers.onCommand);
+    },
+    signals(list, push) {
+      const d = { list }, cur = doc.items['sig:' + id];
+      if (cur && JSON.stringify(cur.d) === JSON.stringify(d)) return;
+      put('sig:' + id, d);
+      if (push && handlers) round(handlers.onCommand);
+    },
     /** The Sync peer record id that reaches TV `devId`, or null. */
     peerFor: devId => { for (const pid of Object.keys(peerState)) if (peerState[pid].dev === devId && peerState[pid].ok) return pid; return null; },
     peerStates: () => sync.peers().map(p => Object.assign({ id: p.id, name: p.name, url: p.url }, peerState[p.id] || {})),
     /** A change from this TV's dashboard: {set: {key: data}}, {del: [keys]}, {identify: target}. */
     edit(body) {
       for (const k of Object.keys(body.set || {})) {
-        if (!/^(place|room|opt):[A-Za-z0-9_-]{1,40}$/.test(k)) throw new Error('That item can only be changed by its own TV');
+        if (!/^(place|room|opt|sensor):[A-Za-z0-9_-]{1,40}$/.test(k)) throw new Error('That item can only be changed by its own TV');
         put(k, body.set[k]);
       }
       for (const k of body.del || []) {
-        if (!/^(place|room):[A-Za-z0-9_-]{1,40}$/.test(k)) throw new Error('That item can only be changed by its own TV');
+        if (!/^(place|room|sensor):[A-Za-z0-9_-]{1,40}$/.test(k)) throw new Error('That item can only be changed by its own TV');
         put(k, null, true);
+      }
+      // "Find sensors" from a dashboard: every TV that can scan listens for a while; all TVs sync faster meanwhile.
+      if (body.blescan) {
+        const until = Date.now() + Math.max(10, Math.min(120, +body.blescan || 45)) * 1000;
+        put('cmd:' + Date.now().toString(36) + crypto.randomBytes(2).toString('hex'), { action: 'blescan', until, target: 'all', from: id });
+        this.fast(until);
       }
       // Activity reported from outside (later Home Assistant motion; for now the API): this TV's room counts as in use.
       if (body.activity) { lastAct = 0; this.activity(String(body.activity).slice(0, 40)); }
@@ -376,6 +399,7 @@ function create(dataDir, sync, cfg, log, me) {
       const tick = async () => { prune(); reconcileAuth(); try { reconcileMesh(); } catch (e) { log('site: mesh ' + e.message); } await refreshSelf(envNow).catch(e => log('site: ' + e.message)); await round(onCommand); };
       setTimeout(tick, 5000);
       setInterval(tick, 15000);
+      setInterval(() => { if (Date.now() < fastUntil) round(onCommand).catch(() => {}); }, 3000);   // during a sensor search
     },
     /** An authenticator was added on this TV: share it now. */
     authChanged() { reconcileAuth(); if (handlers) round(handlers.onCommand); },
